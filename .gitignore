@@ -1,0 +1,38 @@
+# Claude Code files
+.claude/
+CLAUDE.md
+*.claude.md
+
+# Dependencies
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build outputs (if we add a build step later)
+dist/
+build/
+
+# Temporary files
+*.tmp
+.cache/
+
+# Old versions during development
+index_*.html
