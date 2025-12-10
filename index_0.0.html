@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Local PWA Player</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#111827">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        /* Virtual Scroller Styles */
+        #scroller-container { position: relative; height: 100%; overflow-y: auto; contain: strict; }
+        #scroller-content { position: absolute; top: 0; left: 0; width: 100%; }
+        /* Log Console */
+        #console-log { font-family: monospace; font-size: 11px; line-height: 1.4; }
+    </style>
+</head>
+<body class="bg-black text-white h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="p-4 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0 z-20">
+        <div>
+            <h1 class="font-bold text-lg text-violet-400">Local Stream</h1>
+            <p class="text-xs text-gray-500" id="status">Ready</p>
+        </div>
+        <div class="flex gap-2">
+            <button id="resetBtn" class="bg-gray-800 text-gray-400 px-3 py-1 rounded text-xs">Reset</button>
+            <button id="scanBtn" class="bg-violet-600 active:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                <i class="ph ph-folder-notch-open"></i> Scan SD
+            </button>
+        </div>
+    </header>
+
+    <!-- Restore Banner -->
+    <div id="perm-banner" class="hidden bg-blue-600 text-white p-3 text-center cursor-pointer hover:bg-blue-700 shrink-0 z-30 font-medium text-sm">
+        <i class="ph ph-key"></i> Tap to restore SD Card Access
+    </div>
+
+    <!-- Main View -->
+    <main class="flex-1 flex flex-col relative overflow-hidden">
+        <!-- List -->
+        <div class="flex-1 relative bg-black border-b border-gray-800" id="scroller-wrapper">
+            <div id="scroller-container">
+                <div id="scroller-phantom"></div>
+                <div id="scroller-content"></div>
+            </div>
+            <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-gray-600 pointer-events-none">
+                <i class="ph ph-music-notes text-6xl mb-4 opacity-30"></i>
+                <p>No music loaded</p>
+            </div>
+        </div>
+        <!-- Logs -->
+        <div class="h-32 bg-gray-950 border-t border-gray-800 flex flex-col shrink-0">
+            <div class="px-2 py-1 bg-gray-900 text-xs text-gray-500 flex justify-between">
+                <span>LOGS</span><span onclick="document.getElementById('console-log').innerHTML=''" class="cursor-pointer">CLEAR</span>
+            </div>
+            <div id="console-log" class="flex-1 overflow-y-auto p-2 text-green-400 break-all"></div>
+        </div>
+    </main>
+
+    <!-- Player Footer -->
+    <footer class="bg-gray-900 border-t border-gray-800 h-24 shrink-0 flex flex-col justify-center px-4 z-40">
+        <div class="flex items-center justify-between mb-2">
+            <div class="truncate w-2/3">
+                <h3 id="p-title" class="font-bold text-white truncate">Not Playing</h3>
+                <p id="p-artist" class="text-xs text-gray-500 truncate">--</p>
+            </div>
+            <button id="playBtn" class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center text-xl shadow-lg">
+                <i id="playIcon" class="ph ph-play-fill ml-1"></i>
+            </button>
+        </div>
+        <input type="range" id="seek" value="0" max="100" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-violet-500">
+    </footer>
+
+    <audio id="audio"></audio>
+
+    <script>
+        // SERVICE WORKER REGISTRATION
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(() => console.log('SW Registered'))
+                .catch(err => console.error('SW Fail', err));
+        }
+
+        // LOGGING
+        function log(msg, type = 'info') {
+            const el = document.getElementById('console-log');
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            if (type === 'error') div.className = "text-red-400 font-bold";
+            if (type === 'warn') div.className = "text-yellow-400";
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        // DB & CONFIG
+        const ROW_HEIGHT = 60;
+        const BATCH_SIZE = 500;
+        const db = new Dexie("MegaMusicPWA");
+        db.version(1).stores({ tracks: '++id, title, path' });
+
+        let allTracks = [], dirHandleRoot = null, isPlaying = false, currentTrackIdx = -1;
+        const audio = document.getElementById('audio');
+        
+        // SCAN
+        document.getElementById('scanBtn').onclick = async () => {
+            if (!window.showDirectoryPicker) return log("API Unsupported. Enable flags.", 'error');
+            try {
+                dirHandleRoot = await window.showDirectoryPicker({ id: 'music_root', mode: 'read' });
+                await db.tracks.put({ id: 'root_handle', handle: dirHandleRoot });
+                document.getElementById('scanBtn').disabled = true;
+                
+                await db.tracks.where('id').notEqual('root_handle').delete();
+                allTracks = []; renderList();
+
+                let buffer = [], count = 0;
+                async function traverse(handle, path) {
+                    for await (const entry of handle.values()) {
+                        if (entry.kind === 'file' && /\.(mp3|m4a|flac|wav)$/i.test(entry.name)) {
+                            buffer.push({ title: entry.name, handle: entry, path: path + "/" + entry.name });
+                            if (buffer.length >= BATCH_SIZE) {
+                                await db.tracks.bulkAdd(buffer);
+                                count += buffer.length;
+                                document.getElementById('status').innerText = `Found ${count}`;
+                                buffer = [];
+                            }
+                        } else if (entry.kind === 'directory') await traverse(entry, path + "/" + entry.name);
+                    }
+                }
+                log("Scanning...");
+                await traverse(dirHandleRoot, "");
+                if (buffer.length > 0) await db.tracks.bulkAdd(buffer);
+                
+                log("Complete.");
+                document.getElementById('scanBtn').innerText = "Done";
+                loadLibrary();
+            } catch (err) { log(err.message, 'error'); document.getElementById('scanBtn').disabled = false; }
+        };
+
+        // LOAD
+        async function loadLibrary() {
+            try {
+                const root = await db.tracks.get('root_handle');
+                if (root) {
+                    dirHandleRoot = root.handle;
+                    const perm = await dirHandleRoot.queryPermission({ mode: 'read' });
+                    if (perm !== 'granted') document.getElementById('perm-banner').classList.remove('hidden');
+                }
+                allTracks = await db.tracks.where('id').notEqual('root_handle').toArray();
+                document.getElementById('status').innerText = `${allTracks.length} tracks`;
+                if(allTracks.length > 0) {
+                    document.getElementById('empty-state').classList.add('hidden');
+                    initScroller();
+                }
+            } catch(e) { log(e.message, 'error'); }
+        }
+
+        // PERMISSION RESTORE
+        document.getElementById('perm-banner').onclick = async () => {
+            if(!dirHandleRoot) return;
+            if ((await dirHandleRoot.requestPermission({ mode: 'read' })) === 'granted') {
+                document.getElementById('perm-banner').classList.add('hidden');
+            }
+        };
+
+        // VIRTUAL SCROLLER
+        const container = document.getElementById('scroller-container');
+        const content = document.getElementById('scroller-content');
+        const phantom = document.getElementById('scroller-phantom');
+
+        function initScroller() {
+            phantom.style.height = `${allTracks.length * ROW_HEIGHT}px`;
+            container.onscroll = renderList;
+            renderList();
+        }
+
+        function renderList() {
+            const scrollTop = container.scrollTop;
+            const start = Math.floor(scrollTop / ROW_HEIGHT);
+            const end = Math.min(allTracks.length - 1, start + Math.ceil(container.clientHeight / ROW_HEIGHT) + 5);
+            let html = '';
+            for (let i = start; i <= end; i++) {
+                const t = allTracks[i];
+                html += `<div class="absolute w-full px-4 flex items-center justify-between border-b border-gray-800 hover:bg-gray-800 cursor-pointer ${i===currentTrackIdx ? 'text-violet-400' : 'text-gray-300'}" style="top:${i*ROW_HEIGHT}px;height:${ROW_HEIGHT}px" onclick="playTrack(${i})">
+                    <div class="overflow-hidden"><div class="font-bold text-sm truncate">${t.title}</div><div class="text-xs text-gray-500 truncate">${t.path}</div></div>
+                </div>`;
+            }
+            content.innerHTML = html;
+        }
+
+        // PLAYBACK
+        window.playTrack = async (i) => {
+            currentTrackIdx = i;
+            try {
+                const f = await allTracks[i].handle.getFile();
+                audio.src = URL.createObjectURL(f);
+                audio.play();
+                document.getElementById('p-title').innerText = allTracks[i].title;
+                document.getElementById('playIcon').className = "ph ph-pause-fill";
+                renderList();
+                
+                // Lazy Tags
+                window.jsmediatags.read(f, { onSuccess: t => {
+                    if(t.tags.artist) document.getElementById('p-artist').innerText = t.tags.artist;
+                }});
+            } catch(e) { 
+                log(e.message, 'error');
+                if(e.name === 'NotAllowedError') document.getElementById('perm-banner').classList.remove('hidden');
+            }
+        };
+
+        // CONTROLS
+        document.getElementById('playBtn').onclick = () => { audio.paused ? audio.play() : audio.pause(); updateIcon(); };
+        const updateIcon = () => document.getElementById('playIcon').className = audio.paused ? "ph ph-play-fill ml-1" : "ph ph-pause-fill";
+        audio.onplay = updateIcon; audio.onpause = updateIcon;
+        audio.onended = () => { if(currentTrackIdx < allTracks.length-1) playTrack(currentTrackIdx+1); };
+        audio.ontimeupdate = () => { if(audio.duration) document.getElementById('seek').value = (audio.currentTime/audio.duration)*100; };
+        document.getElementById('seek').oninput = (e) => audio.currentTime = (e.target.value/100)*audio.duration;
+        document.getElementById('resetBtn').onclick = async () => { await db.delete(); window.location.reload(); };
+
+        loadLibrary();
+    </script>
+</body>
+</html>

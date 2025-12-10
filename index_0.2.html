@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Local PWA Player</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#111827">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        #scroller-container { position: relative; height: 100%; overflow-y: auto; contain: strict; }
+        #scroller-content { position: absolute; top: 0; left: 0; width: 100%; }
+        #console-log { font-family: monospace; font-size: 11px; line-height: 1.4; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-black text-white h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="p-4 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0 z-20 h-16">
+        <div class="flex items-center gap-3">
+            <!-- Back Button (Hidden by default) -->
+            <button id="backBtn" class="hidden bg-gray-800 hover:bg-gray-700 w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center transition active:scale-95">
+                <i class="ph ph-arrow-left text-violet-400 font-bold text-lg"></i>
+            </button>
+            
+            <!-- Branding -->
+            <div class="flex items-center gap-2" id="header-branding">
+                <div class="bg-violet-600 p-1.5 rounded-lg flex-shrink-0">
+                    <i class="ph ph-music-notes text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-sm leading-tight text-gray-100">Local Stream</h1>
+                    <p class="text-[10px] text-gray-500" id="status">Ready</p>
+                </div>
+            </div>
+
+            <!-- Album Title (Hidden by default) -->
+            <h1 id="header-title" class="hidden font-bold text-sm truncate max-w-[200px] text-gray-100">Album View</h1>
+        </div>
+
+        <div class="flex gap-2 flex-shrink-0">
+            <button id="installBtn" class="hidden bg-gray-800 text-blue-400 border border-blue-900/50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                <i class="ph ph-download-simple"></i>
+            </button>
+            <button id="scanBtn" class="bg-violet-600 active:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                <i class="ph ph-folder-notch-open"></i> Scan
+            </button>
+        </div>
+    </header>
+
+    <!-- Permission Banner -->
+    <div id="perm-banner" class="hidden bg-blue-600 text-white p-3 text-center cursor-pointer hover:bg-blue-700 shrink-0 z-30 font-medium text-xs">
+        <i class="ph ph-key"></i> Tap here to restore SD Card Access
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col relative overflow-hidden">
+        <!-- Virtual Scroller -->
+        <div class="flex-1 relative bg-black border-b border-gray-800" id="scroller-wrapper">
+            <div id="scroller-container">
+                <div id="scroller-phantom"></div>
+                <div id="scroller-content"></div>
+            </div>
+            
+            <!-- Empty State -->
+            <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-gray-600 pointer-events-none">
+                <i class="ph ph-vinyl-record text-6xl mb-4 opacity-20"></i>
+                <p class="text-sm opacity-50">Library Empty</p>
+                <p class="text-[10px] opacity-30 mt-1">Tap "Scan" to index music</p>
+            </div>
+        </div>
+
+        <!-- Debug Logs -->
+        <div class="bg-gray-950 border-t border-gray-800 flex flex-col shrink-0 transition-all duration-300 h-6 overflow-hidden" id="log-panel">
+            <div class="px-3 py-1 bg-gray-900 text-[9px] text-gray-600 flex justify-between cursor-pointer hover:bg-gray-800" onclick="toggleLogs()">
+                <span>DEBUG LOGS</span><span onclick="event.stopPropagation(); document.getElementById('console-log').innerHTML=''">CLEAR</span>
+            </div>
+            <div id="console-log" class="flex-1 overflow-y-auto p-2 text-green-400 break-all h-32 text-[10px]"></div>
+        </div>
+    </main>
+
+    <!-- Player Controls -->
+    <footer class="bg-gray-900 border-t border-gray-800 h-24 shrink-0 flex flex-col justify-center px-4 z-40 pb-safe shadow-2xl">
+        <div class="flex items-center justify-between gap-4 mb-3">
+            
+            <!-- Art & Info -->
+            <div class="flex items-center gap-3 overflow-hidden flex-1">
+                <div class="w-11 h-11 bg-gray-800 rounded-md flex-shrink-0 relative overflow-hidden border border-gray-700">
+                    <img id="p-art" class="w-full h-full object-cover hidden">
+                    <div id="p-art-default" class="absolute inset-0 flex items-center justify-center text-gray-600">
+                        <i class="ph ph-music-note text-xl"></i>
+                    </div>
+                </div>
+                <div class="truncate flex-1">
+                    <h3 id="p-title" class="font-bold text-sm text-gray-100 truncate">Not Playing</h3>
+                    <p id="p-artist" class="text-xs text-gray-500 truncate">Select a track</p>
+                </div>
+            </div>
+
+            <!-- Controls (Prev / Play / Next) -->
+            <div class="flex items-center gap-3">
+                <button id="prevBtn" class="text-gray-400 hover:text-white transition p-2 active:text-violet-400">
+                    <i class="ph ph-skip-back-fill text-xl"></i>
+                </button>
+                
+                <button id="playBtn" class="w-11 h-11 bg-white text-black rounded-full flex items-center justify-center text-lg shadow-lg active:scale-95 transition hover:bg-gray-200">
+                    <i id="playIcon" class="ph ph-play-fill ml-0.5"></i>
+                </button>
+                
+                <button id="nextBtn" class="text-gray-400 hover:text-white transition p-2 active:text-violet-400">
+                    <i class="ph ph-skip-forward-fill text-xl"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Seek Bar -->
+        <div class="relative w-full h-3 flex items-center">
+            <input type="range" id="seek" value="0" max="100" class="absolute w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-violet-500 hover:h-2 transition-all">
+        </div>
+    </footer>
+
+    <audio id="audio"></audio>
+
+    <script>
+        // --- 1. SYSTEM UTILS ---
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+        const logPanel = document.getElementById('log-panel');
+        
+        // Register SW
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+
+        // Install Prompt Logic
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault(); deferredPrompt = e; installBtn.classList.remove('hidden');
+        });
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return; deferredPrompt.prompt();
+            await deferredPrompt.userChoice; deferredPrompt = null; installBtn.classList.add('hidden');
+        });
+
+        // Logger
+        function log(msg, type = 'info') {
+            const el = document.getElementById('console-log');
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            if (type === 'error') div.className = "text-red-400 font-bold";
+            el.appendChild(div);
+        }
+        function toggleLogs() {
+            logPanel.classList.toggle('h-6'); logPanel.classList.toggle('h-32');
+        }
+
+        // --- 2. DATABASE CONFIG ---
+        const ROW_HEIGHT = 60;
+        const BATCH_SIZE = 500;
+        const db = new Dexie("MegaMusicPWA");
+        // Schema includes 'album' and 'path'
+        db.version(1).stores({ tracks: '++id, title, artist, path, album' });
+
+        // --- 3. STATE MANAGEMENT ---
+        let allTracks = [];
+        let albums = {};     // Map: { "Album Name": [track1, track2...] }
+        let albumKeys = [];  // Array: ["Album A", "Album B"]
+        
+        // Navigation State
+        let currentView = 'ALBUMS'; // 'ALBUMS' or 'TRACKS'
+        let viewList = [];          // The actual array currently displayed
+        let activeAlbumName = null;
+        
+        // Playback State
+        let dirHandleRoot = null;
+        let currentTrack = null;
+        let playbackQueue = [];     // The list currently playing (for Next/Prev)
+        let playbackIndex = -1;
+        
+        const audio = document.getElementById('audio');
+
+        // --- 4. SCANNING (SD Card) ---
+        document.getElementById('scanBtn').onclick = async () => {
+            if (!window.showDirectoryPicker) return log("API Unsupported. Enable flags.", 'error');
+            try {
+                // Request Access
+                dirHandleRoot = await window.showDirectoryPicker({ id: 'music_root', mode: 'read' });
+                
+                // Store Handle
+                await db.tracks.put({ id: 'root_handle', handle: dirHandleRoot });
+                await db.tracks.where('id').notEqual('root_handle').delete();
+                
+                const btn = document.getElementById('scanBtn');
+                btn.innerText = "Scanning..."; btn.disabled = true;
+
+                let buffer = [];
+                let count = 0;
+
+                async function traverse(handle, path) {
+                    for await (const entry of handle.values()) {
+                        if (entry.kind === 'file') {
+                            const name = entry.name;
+                            if (/\.(mp3|m4a|flac|wav|ogg)$/i.test(name)) {
+                                // Use parent folder name as initial "Album"
+                                const pathParts = path.split('/');
+                                const folderName = pathParts[pathParts.length - 1] || "Unknown Album";
+                                
+                                buffer.push({
+                                    title: name, // Fallback: Filename
+                                    handle: entry,
+                                    path: path + "/" + name,
+                                    album: folderName,
+                                    artist: "Unknown Artist"
+                                });
+
+                                if (buffer.length >= BATCH_SIZE) {
+                                    await db.tracks.bulkAdd(buffer);
+                                    count += buffer.length;
+                                    document.getElementById('status').innerText = `Indexed ${count}`;
+                                    buffer = [];
+                                }
+                            }
+                        } else if (entry.kind === 'directory') {
+                            await traverse(entry, path + "/" + entry.name);
+                        }
+                    }
+                }
+
+                log("Scan started...");
+                await traverse(dirHandleRoot, "");
+                if (buffer.length > 0) await db.tracks.bulkAdd(buffer);
+                
+                log("Scan complete.");
+                btn.innerText = "Scan SD"; btn.disabled = false;
+                loadLibrary();
+
+            } catch (err) { 
+                log(err.message, 'error'); 
+                document.getElementById('scanBtn').disabled = false; 
+            }
+        };
+
+        // --- 5. LOADING & GROUPING ---
+        async function loadLibrary() {
+            try {
+                // Restore Handle
+                const root = await db.tracks.get('root_handle');
+                if (root) {
+                    dirHandleRoot = root.handle;
+                    // Check Perms
+                    const perm = await dirHandleRoot.queryPermission({ mode: 'read' });
+                    if (perm !== 'granted') document.getElementById('perm-banner').classList.remove('hidden');
+                }
+                
+                // Load Tracks
+                allTracks = await db.tracks.where('id').notEqual('root_handle').toArray();
+                document.getElementById('status').innerText = `${allTracks.length} tracks`;
+                
+                if (allTracks.length > 0) {
+                    document.getElementById('empty-state').classList.add('hidden');
+                    groupAlbums();
+                    switchView('ALBUMS');
+                }
+            } catch(e) { log(e.message, 'error'); }
+        }
+
+        function groupAlbums() {
+            albums = {};
+            allTracks.forEach(t => {
+                const alb = t.album || "Unknown";
+                if (!albums[alb]) albums[alb] = [];
+                albums[alb].push(t);
+            });
+            // Sort A-Z
+            albumKeys = Object.keys(albums).sort((a,b) => a.localeCompare(b, undefined, {numeric: true}));
+        }
+
+        // --- 6. NAVIGATION VIEWS ---
+        function switchView(mode, albumName = null) {
+            currentView = mode;
+            const backBtn = document.getElementById('backBtn');
+            const branding = document.getElementById('header-branding');
+            const titleEl = document.getElementById('header-title');
+
+            if (mode === 'ALBUMS') {
+                viewList = albumKeys;
+                activeAlbumName = null;
+                
+                backBtn.classList.add('hidden');
+                branding.classList.remove('hidden');
+                titleEl.classList.add('hidden');
+                
+            } else if (mode === 'TRACKS') {
+                activeAlbumName = albumName;
+                // Sort Tracks by Title (or Metadata Title if available)
+                viewList = albums[albumName].sort((a,b) => a.title.localeCompare(b.title, undefined, {numeric: true}));
+                
+                backBtn.classList.remove('hidden');
+                branding.classList.add('hidden');
+                titleEl.innerText = albumName;
+                titleEl.classList.remove('hidden');
+            }
+            
+            // Reset Scroll
+            document.getElementById('scroller-container').scrollTop = 0;
+            initScroller();
+        }
+
+        document.getElementById('backBtn').onclick = () => switchView('ALBUMS');
+        document.getElementById('perm-banner').onclick = async () => {
+            if(!dirHandleRoot) return;
+            if ((await dirHandleRoot.requestPermission({ mode: 'read' })) === 'granted') {
+                document.getElementById('perm-banner').classList.add('hidden');
+            }
+        };
+
+        // --- 7. VIRTUAL SCROLLER RENDERER ---
+        const container = document.getElementById('scroller-container');
+        const content = document.getElementById('scroller-content');
+        const phantom = document.getElementById('scroller-phantom');
+
+        function initScroller() {
+            phantom.style.height = `${viewList.length * ROW_HEIGHT}px`;
+            container.onscroll = renderList;
+            renderList();
+        }
+
+        function renderList() {
+            const scrollTop = container.scrollTop;
+            const viewportHeight = container.clientHeight;
+            const start = Math.floor(scrollTop / ROW_HEIGHT);
+            const end = Math.min(viewList.length - 1, start + Math.ceil(viewportHeight / ROW_HEIGHT) + 3);
+            
+            let html = '';
+            for (let i = start; i <= end; i++) {
+                const top = i * ROW_HEIGHT;
+                
+                if (currentView === 'ALBUMS') {
+                    // ALBUM CARD
+                    const albName = viewList[i];
+                    const count = albums[albName].length;
+                    html += `
+                    <div class="absolute w-full px-4 flex items-center gap-4 border-b border-gray-800 hover:bg-gray-800 cursor-pointer h-[60px]" 
+                         style="top:${top}px" 
+                         onclick="switchView('TRACKS', '${albName.replace(/'/g, "\\'")}')">
+                        <div class="w-10 h-10 bg-gray-800 rounded flex items-center justify-center text-gray-500">
+                            <i class="ph ph-folder-simple text-2xl"></i>
+                        </div>
+                        <div class="flex-1 overflow-hidden">
+                            <div class="font-bold text-sm truncate text-gray-200">${albName}</div>
+                            <div class="text-xs text-gray-500">${count} tracks</div>
+                        </div>
+                        <i class="ph ph-caret-right text-gray-600"></i>
+                    </div>`;
+                    
+                } else {
+                    // TRACK CARD
+                    const t = viewList[i];
+                    const isActive = currentTrack && currentTrack.id === t.id;
+                    html += `
+                    <div class="absolute w-full px-4 flex items-center justify-between border-b border-gray-800 hover:bg-gray-800 cursor-pointer h-[60px] ${isActive ? 'bg-gray-900/80 text-violet-400' : 'text-gray-300'}" 
+                         style="top:${top}px" 
+                         onclick="playTrack(${t.id})">
+                        <div class="overflow-hidden w-full pr-4">
+                            <div class="font-medium text-sm truncate">${t.title}</div>
+                            <div class="text-[10px] text-gray-500 truncate opacity-70">${t.artist}</div>
+                        </div>
+                        ${isActive ? '<i class="ph ph-speaker-high text-lg animate-pulse text-violet-500"></i>' : ''}
+                    </div>`;
+                }
+            }
+            content.innerHTML = html;
+        }
+
+        // --- 8. PLAYBACK ENGINE ---
+        window.playTrack = async (id) => {
+            const track = allTracks.find(t => t.id === id);
+            if (!track) return;
+
+            // Update Queue: If we click a track, the current list becomes our playlist
+            if (currentView === 'TRACKS') {
+                playbackQueue = [...viewList];
+                playbackIndex = playbackQueue.findIndex(t => t.id === id);
+            }
+
+            currentTrack = track;
+
+            try {
+                // Get File
+                const f = await track.handle.getFile();
+                audio.src = URL.createObjectURL(f);
+                audio.play();
+
+                // UI Update
+                document.getElementById('p-title').innerText = track.title;
+                document.getElementById('p-artist').innerText = track.artist;
+                document.getElementById('playIcon').className = "ph ph-pause-fill ml-0.5";
+                
+                // Clear Art
+                document.getElementById('p-art').classList.add('hidden');
+                document.getElementById('p-art-default').classList.remove('hidden');
+                
+                renderList(); // Update highlights
+
+                // METADATA UPDATE (Self-Healing)
+                window.jsmediatags.read(f, {
+                    onSuccess: async (tag) => {
+                        const t = tag.tags;
+                        let needsUpdate = false;
+
+                        // Title
+                        if (t.title && t.title !== track.title) {
+                            track.title = t.title;
+                            document.getElementById('p-title').innerText = t.title;
+                            needsUpdate = true;
+                        }
+                        
+                        // Artist
+                        if (t.artist && t.artist !== track.artist) {
+                            track.artist = t.artist;
+                            document.getElementById('p-artist').innerText = t.artist;
+                            needsUpdate = true;
+                        }
+
+                        // Save to DB
+                        if (needsUpdate) {
+                            await db.tracks.update(track.id, { title: track.title, artist: track.artist });
+                        }
+
+                        // Artwork
+                        if (t.picture) {
+                            const { data, format } = t.picture;
+                            let base64String = "";
+                            for (let i = 0; i < data.length; i++) base64String += String.fromCharCode(data[i]);
+                            const imgUrl = `data:${format};base64,${window.btoa(base64String)}`;
+                            
+                            const img = document.getElementById('p-art');
+                            img.src = imgUrl;
+                            img.classList.remove('hidden');
+                            document.getElementById('p-art-default').classList.add('hidden');
+                            
+                            // Media Session
+                            if ('mediaSession' in navigator) {
+                                navigator.mediaSession.metadata = new MediaMetadata({
+                                    title: track.title,
+                                    artist: track.artist,
+                                    album: track.album,
+                                    artwork: [{ src: imgUrl, sizes: '512x512', type: format }]
+                                });
+                            }
+                        }
+                    },
+                    onError: () => {}
+                });
+
+            } catch (e) {
+                log(e.message, 'error');
+                if (e.name === 'NotAllowedError') document.getElementById('perm-banner').classList.remove('hidden');
+            }
+        };
+
+        // --- 9. CONTROLS ---
+        function playNext() {
+            if (playbackQueue.length === 0 || playbackIndex === -1) return;
+            if (playbackIndex < playbackQueue.length - 1) {
+                playTrack(playbackQueue[playbackIndex + 1].id);
+            }
+        }
+
+        function playPrev() {
+            if (playbackQueue.length === 0 || playbackIndex === -1) return;
+            if (playbackIndex > 0) {
+                playTrack(playbackQueue[playbackIndex - 1].id);
+            }
+        }
+
+        document.getElementById('nextBtn').onclick = playNext;
+        document.getElementById('prevBtn').onclick = playPrev;
+        
+        document.getElementById('playBtn').onclick = () => {
+            if (audio.paused) {
+                audio.play(); 
+                document.getElementById('playIcon').className = "ph ph-pause-fill ml-0.5";
+            } else {
+                audio.pause();
+                document.getElementById('playIcon').className = "ph ph-play-fill ml-0.5";
+            }
+        };
+
+        // Audio Events
+        audio.onplay = () => document.getElementById('playIcon').className = "ph ph-pause-fill ml-0.5";
+        audio.onpause = () => document.getElementById('playIcon').className = "ph ph-play-fill ml-0.5";
+        audio.onended = playNext;
+        
+        audio.ontimeupdate = () => {
+            if(audio.duration) document.getElementById('seek').value = (audio.currentTime / audio.duration) * 100;
+        };
+        document.getElementById('seek').oninput = (e) => {
+            if(audio.duration) audio.currentTime = (e.target.value / 100) * audio.duration;
+        };
+
+        // Media Session Actions
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.setActionHandler('play', () => audio.play());
+            navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+            navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+            navigator.mediaSession.setActionHandler('nexttrack', playNext);
+        }
+
+        // --- INIT ---
+        loadLibrary();
+    </script>
+</body>
+</html>
