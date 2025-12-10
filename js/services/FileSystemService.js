@@ -85,8 +85,12 @@ class FileSystemService {
                         const trackMatch = name.match(/^(\d+)/);
                         const trackNumber = trackMatch ? parseInt(trackMatch[1], 10) : null;
 
+                        // Clean filename: remove extension and track number prefix
+                        let cleanTitle = name.replace(/\.[^/.]+$/, ''); // Remove extension
+                        cleanTitle = cleanTitle.replace(/^\d+[\s\-_.]*/, ''); // Remove leading track number
+
                         buffer.push({
-                            title: name, // Fallback: Filename
+                            title: cleanTitle,
                             handle: entry,
                             path: path + "/" + name,
                             album: folderName,

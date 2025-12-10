@@ -9,6 +9,12 @@ import MetadataService from './services/MetadataService.js';
 import PlaybackService from './services/PlaybackService.js';
 import ThemeService from './services/ThemeService.js';
 
+// Import components
+import './components/AppHeader.js';
+import './components/PlayerControls.js';
+import './components/AlbumGrid.js';
+import './components/TrackList.js';
+
 class MusicPlayerApp {
     constructor() {
         // Initialize services
@@ -26,8 +32,8 @@ class MusicPlayerApp {
         this.activeAlbumName = null;
         this.viewList = [];
 
-        // UI elements
-        this.elements = {};
+        // Components
+        this.components = {};
     }
 
     /**
@@ -36,8 +42,21 @@ class MusicPlayerApp {
     async init() {
         console.log('[App] Initializing...');
 
-        // Cache UI elements
-        this.cacheElements();
+        // Wait for custom elements to be defined
+        await Promise.all([
+            customElements.whenDefined('app-header'),
+            customElements.whenDefined('player-controls'),
+            customElements.whenDefined('album-grid'),
+            customElements.whenDefined('track-list')
+        ]);
+
+        // Get component references
+        this.components = {
+            header: document.querySelector('app-header'),
+            player: document.querySelector('player-controls'),
+            albumGrid: document.querySelector('album-grid'),
+            trackList: document.querySelector('track-list')
+        };
 
         // Initialize services
         await this.db.init();
@@ -56,97 +75,30 @@ class MusicPlayerApp {
     }
 
     /**
-     * Cache DOM elements
-     */
-    cacheElements() {
-        this.elements = {
-            // Header
-            backBtn: document.getElementById('backBtn'),
-            branding: document.getElementById('header-branding'),
-            headerTitle: document.getElementById('header-title'),
-            status: document.getElementById('status'),
-            themeBtn: document.getElementById('themeBtn'),
-            themeIcon: document.getElementById('themeIcon'),
-            installBtn: document.getElementById('installBtn'),
-            scanBtn: document.getElementById('scanBtn'),
-
-            // Banners
-            updateBanner: document.getElementById('update-banner'),
-            permBanner: document.getElementById('perm-banner'),
-
-            // Main content
-            albumGrid: document.getElementById('album-grid-container'),
-            scrollerWrapper: document.getElementById('scroller-wrapper'),
-            scrollerContainer: document.getElementById('scroller-container'),
-            scrollerContent: document.getElementById('scroller-content'),
-            scrollerPhantom: document.getElementById('scroller-phantom'),
-            emptyState: document.getElementById('empty-state'),
-
-            // Player
-            playerArt: document.getElementById('p-art'),
-            playerArtDefault: document.getElementById('p-art-default'),
-            playerTitle: document.getElementById('p-title'),
-            playerArtist: document.getElementById('p-artist'),
-            playBtn: document.getElementById('playBtn'),
-            playIcon: document.getElementById('playIcon'),
-            prevBtn: document.getElementById('prevBtn'),
-            nextBtn: document.getElementById('nextBtn'),
-            seekBar: document.getElementById('seek'),
-
-            // Debug
-            logPanel: document.getElementById('log-panel')
-        };
-    }
-
-    /**
      * Setup all event listeners
      */
     setupEventListeners() {
-        // Header buttons
-        this.elements.backBtn.onclick = () => this.switchView('ALBUMS');
-        this.elements.themeBtn.onclick = () => this.handleThemeToggle();
-        this.elements.scanBtn.onclick = () => this.handleScan();
+        // Navigation events
+        EventBus.on('navigation:back', () => this.switchView('ALBUMS'));
+        EventBus.on('album:selected', (albumName) => this.switchView('TRACKS', albumName, true));
+        EventBus.on('track:selected', (trackId) => this.playTrack(trackId));
 
-        // Player controls
-        this.elements.playBtn.onclick = () => this.playback.togglePlayPause();
-        this.elements.prevBtn.onclick = () => this.playback.playPrev();
-        this.elements.nextBtn.onclick = () => this.playback.playNext();
-        this.elements.seekBar.oninput = (e) => this.playback.seek(e.target.value);
+        // Theme events
+        EventBus.on('theme:toggle', () => this.theme.toggleTheme());
 
-        // Permission banner
-        this.elements.permBanner.onclick = async () => {
-            if (await this.fs.requestPermission()) {
-                this.elements.permBanner.classList.add('hidden');
-            }
-        };
+        // Scan events
+        EventBus.on('scan:request', () => this.handleScan());
 
-        // EventBus listeners
-        EventBus.on('theme:changed', (theme) => this.updateThemeIcon(theme));
-        EventBus.on('playback:play', () => this.updatePlayIcon(false));
-        EventBus.on('playback:pause', () => this.updatePlayIcon(true));
-        EventBus.on('playback:timeupdate', ({ progress }) => {
-            this.elements.seekBar.value = progress;
-        });
-        EventBus.on('track:started', (track) => this.updatePlayerUI(track));
-        EventBus.on('track:artworkLoaded', (url) => this.updatePlayerArt(url));
-        EventBus.on('permission:needed', () => {
-            this.elements.permBanner.classList.remove('hidden');
-        });
-        EventBus.on('albumCover:extracted', () => {
-            if (this.currentView === 'ALBUMS') this.renderAlbumGrid();
-        });
-        EventBus.on('scan:started', () => {
-            this.elements.scanBtn.innerText = 'Scanning...';
-            this.elements.scanBtn.disabled = true;
-        });
-        EventBus.on('scan:completed', async (count) => {
-            this.elements.scanBtn.innerText = 'Scan';
-            this.elements.scanBtn.disabled = false;
+        // Playback events
+        EventBus.on('playback:togglePlayPause', () => this.playback.togglePlayPause());
+        EventBus.on('playback:previous', () => this.playback.playPrev());
+        EventBus.on('playback:next', () => this.playback.playNext());
+        EventBus.on('playback:seek', (percent) => this.playback.seek(percent));
+
+        // Library events
+        EventBus.on('scan:completed', async () => {
             await this.loadLibrary();
         });
-
-        // Scroller
-        this.elements.scrollerContainer.onscroll = () => this.renderTrackList();
     }
 
     /**
@@ -189,24 +141,28 @@ class MusicPlayerApp {
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
-            this.elements.installBtn.classList.remove('hidden');
+            this.components.header?.showInstallButton();
         });
 
-        this.elements.installBtn.addEventListener('click', async () => {
-            if (!deferredPrompt) return;
-            deferredPrompt.prompt();
-            await deferredPrompt.userChoice;
-            deferredPrompt = null;
-            this.elements.installBtn.classList.add('hidden');
-        });
+        const installBtn = this.components.header?.getInstallButton();
+        if (installBtn) {
+            installBtn.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                await deferredPrompt.userChoice;
+                deferredPrompt = null;
+                this.components.header?.hideInstallButton();
+            });
+        }
     }
 
     /**
      * Show update banner
      */
     showUpdateBanner(registration) {
-        this.elements.updateBanner.classList.remove('hidden');
-        this.elements.updateBanner.onclick = () => {
+        const banner = document.getElementById('update-banner');
+        banner.classList.remove('hidden');
+        banner.onclick = () => {
             if (registration && registration.waiting) {
                 registration.waiting.postMessage('SKIP_WAITING');
             }
@@ -225,58 +181,11 @@ class MusicPlayerApp {
         try {
             await this.fs.requestDirectoryAccess();
             await this.fs.scanDirectory((count) => {
-                this.elements.status.innerText = `Indexed ${count}`;
+                EventBus.emit('scan:progress', count);
             });
         } catch (error) {
             console.error('[App] Scan error:', error);
         }
-    }
-
-    /**
-     * Handle theme toggle
-     */
-    handleThemeToggle() {
-        this.theme.toggleTheme();
-    }
-
-    /**
-     * Update theme icon
-     */
-    updateThemeIcon(theme) {
-        if (theme === 'dark') {
-            this.elements.themeIcon.className = 'ph ph-moon';
-        } else {
-            this.elements.themeIcon.className = 'ph ph-sun';
-        }
-    }
-
-    /**
-     * Update play icon
-     */
-    updatePlayIcon(paused) {
-        this.elements.playIcon.className = paused ? 'ph-fill ph-play' : 'ph-fill ph-pause';
-    }
-
-    /**
-     * Update player UI
-     */
-    updatePlayerUI(track) {
-        this.elements.playerTitle.innerText = track.title;
-        this.elements.playerArtist.innerText = track.artist;
-        this.elements.playerArt.classList.add('hidden');
-        this.elements.playerArtDefault.classList.remove('hidden');
-
-        // Re-render track list to show active track
-        if (this.currentView === 'TRACKS') this.renderTrackList();
-    }
-
-    /**
-     * Update player artwork
-     */
-    updatePlayerArt(url) {
-        this.elements.playerArt.src = url;
-        this.elements.playerArt.classList.remove('hidden');
-        this.elements.playerArtDefault.classList.add('hidden');
     }
 
     /**
@@ -285,14 +194,17 @@ class MusicPlayerApp {
     async loadLibrary() {
         try {
             this.allTracks = await this.db.getAllTracks();
-            this.elements.status.innerText = `${this.allTracks.length} tracks`;
+            const emptyState = document.getElementById('empty-state');
 
             if (this.allTracks.length > 0) {
-                this.elements.emptyState.classList.add('hidden');
+                emptyState.classList.add('hidden');
                 this.groupAlbums();
                 this.switchView('ALBUMS');
+                EventBus.emit('library:loaded', this.allTracks.length);
                 // Extract album covers in background
                 this.metadata.extractAlbumCovers(this.albums);
+            } else {
+                emptyState.classList.remove('hidden');
             }
         } catch (error) {
             console.error('[App] Error loading library:', error);
@@ -322,12 +234,14 @@ class MusicPlayerApp {
 
         if (mode === 'ALBUMS') {
             this.activeAlbumName = null;
-            this.elements.backBtn.classList.add('hidden');
-            this.elements.branding.classList.remove('hidden');
-            this.elements.headerTitle.classList.add('hidden');
-            this.elements.albumGrid.classList.remove('hidden');
-            this.elements.scrollerWrapper.classList.add('hidden');
-            this.renderAlbumGrid();
+            this.components.albumGrid.show();
+            this.components.trackList.hide();
+            this.components.albumGrid.setData(
+                this.albums,
+                this.albumKeys,
+                this.metadata.albumCovers
+            );
+            EventBus.emit('view:changed', { view: 'ALBUMS' });
 
         } else if (mode === 'TRACKS') {
             this.activeAlbumName = albumName;
@@ -340,87 +254,16 @@ class MusicPlayerApp {
                 return a.path.localeCompare(b.path, undefined, { numeric: true });
             });
 
-            this.elements.backBtn.classList.remove('hidden');
-            this.elements.branding.classList.add('hidden');
-            this.elements.headerTitle.innerText = albumName;
-            this.elements.headerTitle.classList.remove('hidden');
-            this.elements.albumGrid.classList.add('hidden');
-            this.elements.scrollerWrapper.classList.remove('hidden');
-
-            this.elements.scrollerContainer.scrollTop = 0;
-            this.initScroller();
+            this.components.albumGrid.hide();
+            this.components.trackList.show();
+            this.components.trackList.setTracks(this.viewList);
+            EventBus.emit('view:changed', { view: 'TRACKS', title: albumName });
 
             // Auto-play first track
             if (autoPlay && this.viewList.length > 0) {
                 setTimeout(() => this.playTrack(this.viewList[0].id), 100);
             }
         }
-    }
-
-    /**
-     * Render album grid
-     */
-    renderAlbumGrid() {
-        let html = '';
-        this.albumKeys.forEach((albumName) => {
-            const count = this.albums[albumName].length;
-            const coverUrl = this.metadata.getAlbumCover(albumName);
-            const escapedName = albumName.replace(/'/g, "\\'");
-
-            html += `
-                <div class="album-card" onclick="app.switchView('TRACKS', '${escapedName}', true)">
-                    <div class="album-cover">
-                        ${coverUrl ? `<img src="${coverUrl}" alt="${albumName}">` : '<i class="ph ph-music-notes"></i>'}
-                    </div>
-                    <div class="album-info">
-                        <div class="album-name">${albumName}</div>
-                        <div class="album-track-count">${count} track${count !== 1 ? 's' : ''}</div>
-                    </div>
-                </div>
-            `;
-        });
-        this.elements.albumGrid.innerHTML = html;
-    }
-
-    /**
-     * Initialize virtual scroller
-     */
-    initScroller() {
-        const ROW_HEIGHT = 60;
-        this.elements.scrollerPhantom.style.height = `${this.viewList.length * ROW_HEIGHT}px`;
-        this.renderTrackList();
-    }
-
-    /**
-     * Render track list (virtual scroller)
-     */
-    renderTrackList() {
-        const ROW_HEIGHT = 60;
-        const scrollTop = this.elements.scrollerContainer.scrollTop;
-        const viewportHeight = this.elements.scrollerContainer.clientHeight;
-        const start = Math.floor(scrollTop / ROW_HEIGHT);
-        const end = Math.min(this.viewList.length - 1, start + Math.ceil(viewportHeight / ROW_HEIGHT) + 3);
-
-        let html = '';
-        for (let i = start; i <= end; i++) {
-            const top = i * ROW_HEIGHT;
-            const t = this.viewList[i];
-            const currentTrack = this.playback.getCurrentTrack();
-            const isActive = currentTrack && currentTrack.id === t.id;
-
-            html += `
-                <div class="card ${isActive ? 'card-active' : ''}"
-                     style="top:${top}px"
-                     onclick="app.playTrack(${t.id})">
-                    <div class="card-content" style="padding-right: 1rem;">
-                        <div class="card-title">${t.title}</div>
-                        <div class="card-meta">${t.artist}</div>
-                    </div>
-                    ${isActive ? '<i class="ph ph-speaker-high card-indicator"></i>' : ''}
-                </div>
-            `;
-        }
-        this.elements.scrollerContent.innerHTML = html;
     }
 
     /**
@@ -441,7 +284,6 @@ class MusicPlayerApp {
 
 // Initialize app when DOM is ready
 const app = new MusicPlayerApp();
-window.app = app; // Expose for onclick handlers
 
 document.addEventListener('DOMContentLoaded', () => {
     app.init();

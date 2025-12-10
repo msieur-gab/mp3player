@@ -159,7 +159,8 @@ class PlaybackService {
     playNext() {
         if (this.playbackQueue.length === 0 || this.playbackIndex === -1) return;
         if (this.playbackIndex < this.playbackQueue.length - 1) {
-            const nextTrack = this.playbackQueue[this.playbackIndex + 1];
+            this.playbackIndex++;
+            const nextTrack = this.playbackQueue[this.playbackIndex];
             this.playTrack(nextTrack);
         }
     }
@@ -170,7 +171,8 @@ class PlaybackService {
     playPrev() {
         if (this.playbackQueue.length === 0 || this.playbackIndex === -1) return;
         if (this.playbackIndex > 0) {
-            const prevTrack = this.playbackQueue[this.playbackIndex - 1];
+            this.playbackIndex--;
+            const prevTrack = this.playbackQueue[this.playbackIndex];
             this.playTrack(prevTrack);
         }
     }
