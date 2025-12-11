@@ -44,6 +44,16 @@ class DatabaseService {
                 });
             });
 
+        // Schema v4 - Add play count tracking table
+        this.db.version(4)
+            .stores({
+                tracks: '++id, title, artist, path, album, trackNumber, genre, year, duration',
+                playCount: '++id, &trackKey, playCount, lastPlayed'
+            })
+            .upgrade(tx => {
+                console.log('[DatabaseService] Upgraded to v4: Added playCount table');
+            });
+
         await this.db.open();
         console.log('[DatabaseService] Initialized');
     }
@@ -111,6 +121,87 @@ class DatabaseService {
     async getStats() {
         const count = await this.db.tracks.where('id').notEqual('root_handle').count();
         return { trackCount: count };
+    }
+
+    /**
+     * Generate normalized track key for play count tracking
+     * @param {Object} track - Track object with title, artist, album
+     * @returns {string} Normalized key: "title|artist|album"
+     */
+    generateTrackKey(track) {
+        const title = (track.title || 'Unknown').toLowerCase().trim();
+        const artist = (track.artist || 'Unknown Artist').toLowerCase().trim();
+        const album = (track.album || 'Unknown Album').toLowerCase().trim();
+        return `${title}|${artist}|${album}`;
+    }
+
+    /**
+     * Increment play count for a track
+     * @param {Object} track - Track object with title, artist, album
+     */
+    async incrementPlayCount(track) {
+        const trackKey = this.generateTrackKey(track);
+
+        try {
+            // Try to get existing entry
+            const existing = await this.db.playCount.get({ trackKey: trackKey });
+
+            if (existing) {
+                // Update existing entry
+                await this.db.playCount.update(existing.id, {
+                    playCount: existing.playCount + 1,
+                    lastPlayed: Date.now()
+                });
+                console.log(`[DatabaseService] Play count incremented: ${existing.playCount + 1} for "${track.title}"`);
+            } else {
+                // Create new entry
+                await this.db.playCount.add({
+                    trackKey: trackKey,
+                    playCount: 1,
+                    lastPlayed: Date.now()
+                });
+                console.log(`[DatabaseService] Play count initialized for "${track.title}"`);
+            }
+        } catch (error) {
+            console.error('[DatabaseService] Error updating play count:', error);
+        }
+    }
+
+    /**
+     * Get play count for a track
+     * @param {Object} track - Track object with title, artist, album
+     * @returns {number} Play count (0 if never played)
+     */
+    async getPlayCount(track) {
+        const trackKey = this.generateTrackKey(track);
+        const entry = await this.db.playCount.get({ trackKey: trackKey });
+        return entry ? entry.playCount : 0;
+    }
+
+    /**
+     * Get most played tracks
+     * @param {number} limit - Maximum number of tracks to return
+     * @returns {Array} Array of play count entries, sorted by playCount descending
+     */
+    async getMostPlayed(limit = 20) {
+        return await this.db.playCount
+            .orderBy('playCount')
+            .reverse()
+            .limit(limit)
+            .toArray();
+    }
+
+    /**
+     * Get recently played tracks
+     * @param {number} limit - Maximum number of tracks to return
+     * @returns {Array} Array of play count entries, sorted by lastPlayed descending
+     */
+    async getRecentlyPlayed(limit = 20) {
+        return await this.db.playCount
+            .orderBy('lastPlayed')
+            .reverse()
+            .limit(limit)
+            .toArray();
     }
 }
 
