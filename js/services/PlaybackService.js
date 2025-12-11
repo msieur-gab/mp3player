@@ -4,8 +4,9 @@
 import EventBus from '../utils/EventBus.js';
 
 class PlaybackService {
-    constructor(metadataService) {
+    constructor(metadataService, databaseService) {
         this.metadata = metadataService;
+        this.db = databaseService;
         this.audio = null;
         this.currentTrack = null;
         this.playbackQueue = [];
@@ -36,6 +37,25 @@ class PlaybackService {
 
         this.audio.onended = () => {
             this.playNext();
+        };
+
+        this.audio.onloadedmetadata = () => {
+            // Extract and save duration if not already set
+            if (this.currentTrack && !this.currentTrack.duration && this.audio.duration) {
+                const durationInSeconds = Math.round(this.audio.duration);
+                this.db.updateTrack(this.currentTrack.id, { duration: durationInSeconds })
+                    .then(() => {
+                        this.currentTrack.duration = durationInSeconds;
+                        console.log(`[PlaybackService] Duration extracted: ${durationInSeconds}s for track ${this.currentTrack.id}`);
+                        EventBus.emit('track:durationExtracted', {
+                            trackId: this.currentTrack.id,
+                            duration: durationInSeconds
+                        });
+                    })
+                    .catch(error => {
+                        console.error('[PlaybackService] Error saving duration:', error);
+                    });
+            }
         };
 
         this.audio.ontimeupdate = () => {

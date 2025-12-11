@@ -30,6 +30,20 @@ class DatabaseService {
                 });
             });
 
+        // Schema v3 - Add metadata fields (genre, year, duration, coverArt)
+        this.db.version(3)
+            .stores({
+                tracks: '++id, title, artist, path, album, trackNumber, genre, year, duration'
+            })
+            .upgrade(tx => {
+                return tx.table("tracks").toCollection().modify(track => {
+                    if (!track.genre) track.genre = null;
+                    if (!track.year) track.year = null;
+                    if (!track.duration) track.duration = null;
+                    if (!track.coverArt) track.coverArt = null;
+                });
+            });
+
         await this.db.open();
         console.log('[DatabaseService] Initialized');
     }

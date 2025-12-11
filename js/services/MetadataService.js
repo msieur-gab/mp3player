@@ -24,6 +24,31 @@ class MetadataService {
     }
 
     /**
+     * Extract duration from audio file using Audio element
+     * Duration is NOT in ID3 tags, must be read from actual audio data
+     * @param {File} file - Audio file
+     * @returns {Promise<number|null>} Duration in seconds, or null on error
+     */
+    async extractDuration(file) {
+        return new Promise((resolve) => {
+            const audio = new Audio();
+            const url = URL.createObjectURL(file);
+
+            audio.addEventListener('loadedmetadata', () => {
+                URL.revokeObjectURL(url);
+                resolve(Math.round(audio.duration)); // Duration in seconds
+            });
+
+            audio.addEventListener('error', () => {
+                URL.revokeObjectURL(url);
+                resolve(null); // Return null on error, don't fail the scan
+            });
+
+            audio.src = url;
+        });
+    }
+
+    /**
      * Extract album cover art from file
      * @param {File} file - Audio file
      * @returns {Promise<string|null>} Base64 image data URL or null

@@ -19,9 +19,9 @@ class MusicPlayerApp {
     constructor() {
         // Initialize services
         this.db = new DatabaseService();
-        this.fs = new FileSystemService(this.db);
         this.metadata = new MetadataService(this.db);
-        this.playback = new PlaybackService(this.metadata);
+        this.fs = new FileSystemService(this.db, this.metadata);
+        this.playback = new PlaybackService(this.metadata, this.db);
         this.theme = new ThemeService();
 
         // Application state
@@ -57,6 +57,14 @@ class MusicPlayerApp {
             albumGrid: document.querySelector('album-grid'),
             trackList: document.querySelector('track-list')
         };
+
+        // Get permission banner reference
+        this.permissionBanner = document.getElementById('perm-banner');
+        if (this.permissionBanner) {
+            this.permissionBanner.addEventListener('click', () => {
+                this.handlePermissionRequest();
+            });
+        }
 
         // Initialize services
         await this.db.init();
@@ -99,6 +107,9 @@ class MusicPlayerApp {
         EventBus.on('scan:completed', async () => {
             await this.loadLibrary();
         });
+
+        // Permission events
+        EventBus.on('permission:needed', () => this.showPermissionBanner());
     }
 
     /**
@@ -180,8 +191,8 @@ class MusicPlayerApp {
 
         try {
             await this.fs.requestDirectoryAccess();
-            await this.fs.scanDirectory((count) => {
-                EventBus.emit('scan:progress', count);
+            await this.fs.scanDirectory((count, currentFile) => {
+                EventBus.emit('scan:progress', { count, currentFile });
             });
         } catch (error) {
             console.error('[App] Scan error:', error);
@@ -278,6 +289,44 @@ class MusicPlayerApp {
             await this.playback.playTrack(track, this.viewList);
         } else {
             await this.playback.playTrack(track);
+        }
+    }
+
+    /**
+     * Show permission banner
+     */
+    showPermissionBanner() {
+        if (this.permissionBanner) {
+            this.permissionBanner.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Hide permission banner
+     */
+    hidePermissionBanner() {
+        if (this.permissionBanner) {
+            this.permissionBanner.classList.add('hidden');
+        }
+    }
+
+    /**
+     * Handle permission banner click - request permission
+     */
+    async handlePermissionRequest() {
+        if (!this.fs.getDirectoryHandle()) {
+            console.warn('[App] No directory handle available');
+            return;
+        }
+
+        try {
+            const granted = await this.fs.requestPermission();
+            if (granted) {
+                this.hidePermissionBanner();
+                console.log('[App] Permission granted');
+            }
+        } catch (error) {
+            console.error('[App] Error requesting permission:', error);
         }
     }
 }

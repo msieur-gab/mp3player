@@ -4,8 +4,9 @@
 import EventBus from '../utils/EventBus.js';
 
 class FileSystemService {
-    constructor(databaseService) {
+    constructor(databaseService, metadataService) {
         this.db = databaseService;
+        this.metadata = metadataService;
         this.dirHandleRoot = null;
         this.BATCH_SIZE = 500;
     }
@@ -59,7 +60,7 @@ class FileSystemService {
 
     /**
      * Scan directory for music files
-     * @param {function} onProgress - Progress callback (count)
+     * @param {function} onProgress - Progress callback (count, currentFile)
      */
     async scanDirectory(onProgress) {
         if (!this.dirHandleRoot) {
@@ -77,31 +78,95 @@ class FileSystemService {
                 if (entry.kind === 'file') {
                     const name = entry.name;
                     if (/\.(mp3|m4a|flac|wav|ogg)$/i.test(name)) {
-                        // Use parent folder name as initial "Album"
-                        const pathParts = path.split('/');
-                        const folderName = pathParts[pathParts.length - 1] || "Unknown Album";
+                        try {
+                            // Get file for metadata extraction
+                            const file = await entry.getFile();
 
-                        // Extract track number from filename (e.g., "01 - Song.mp3" -> 1)
-                        const trackMatch = name.match(/^(\d+)/);
-                        const trackNumber = trackMatch ? parseInt(trackMatch[1], 10) : null;
+                            // Extract metadata using jsmediatags
+                            const metadata = await this.metadata.extractMetadata(file);
 
-                        // Clean filename: remove extension and track number prefix
-                        let cleanTitle = name.replace(/\.[^/.]+$/, ''); // Remove extension
-                        cleanTitle = cleanTitle.replace(/^\d+[\s\-_.]*/, ''); // Remove leading track number
+                            // Log metadata structure (excluding picture data)
+                            console.log(`[Metadata] ${name}:`, {
+                                title: metadata.title,
+                                artist: metadata.artist,
+                                album: metadata.album,
+                                genre: metadata.genre,
+                                year: metadata.year,
+                                track: metadata.track,
+                                hasPicture: !!metadata.picture,
+                                // Show all available metadata fields
+                                allFields: Object.keys(metadata).filter(k => k !== 'picture')
+                            });
 
-                        buffer.push({
-                            title: cleanTitle,
-                            handle: entry,
-                            path: path + "/" + name,
-                            album: folderName,
-                            artist: "Unknown Artist",
-                            trackNumber: trackNumber
-                        });
+                            // Extract folder structure for fallbacks
+                            const pathParts = path.split('/').filter(p => p); // Remove empty strings
+                            const folderName = pathParts[pathParts.length - 1] || "Unknown Album";     // Current folder
+                            const parentFolder = pathParts[pathParts.length - 2] || "Unknown Artist";  // Parent folder
 
+                            // Extract track number from filename as fallback
+                            const trackMatch = name.match(/^(\d+)/);
+                            const filenameTrackNumber = trackMatch ? parseInt(trackMatch[1], 10) : null;
+
+                            // Parse track number from metadata (can be "1" or "1/12" format)
+                            let metadataTrackNumber = null;
+                            if (metadata.track) {
+                                const trackStr = String(metadata.track).split('/')[0]; // Take first part if "1/12"
+                                metadataTrackNumber = parseInt(trackStr, 10);
+                            }
+
+                            // Clean filename for fallback title
+                            let cleanTitle = name.replace(/\.[^/.]+$/, ''); // Remove extension
+                            cleanTitle = cleanTitle.replace(/^\d+[\s\-_.]*/, ''); // Remove leading track number
+
+                            // Build track object with metadata (ID3 tags are primary, folder structure is fallback)
+                            buffer.push({
+                                title: metadata.title || cleanTitle,
+                                handle: entry,
+                                path: path + "/" + name,
+                                album: metadata.album || folderName,
+                                artist: metadata.artist || parentFolder,
+                                trackNumber: metadataTrackNumber || filenameTrackNumber,
+                                genre: metadata.genre || null,
+                                year: metadata.year || null,
+                                duration: null, // Will be extracted during playback
+                                coverArt: metadata.picture ? true : false
+                            });
+
+                            count++;
+                            if (onProgress) onProgress(count, name);
+
+                        } catch (error) {
+                            console.warn(`[FileSystemService] Metadata extraction failed for ${name}:`, error);
+
+                            // Fallback to filename and folder structure
+                            const pathParts = path.split('/').filter(p => p);
+                            const folderName = pathParts[pathParts.length - 1] || "Unknown Album";
+                            const parentFolder = pathParts[pathParts.length - 2] || "Unknown Artist";
+                            const trackMatch = name.match(/^(\d+)/);
+                            const trackNumber = trackMatch ? parseInt(trackMatch[1], 10) : null;
+                            let cleanTitle = name.replace(/\.[^/.]+$/, '');
+                            cleanTitle = cleanTitle.replace(/^\d+[\s\-_.]*/, '');
+
+                            buffer.push({
+                                title: cleanTitle,
+                                handle: entry,
+                                path: path + "/" + name,
+                                album: folderName,
+                                artist: parentFolder,
+                                trackNumber: trackNumber,
+                                genre: null,
+                                year: null,
+                                duration: null,
+                                coverArt: false
+                            });
+
+                            count++;
+                            if (onProgress) onProgress(count, name);
+                        }
+
+                        // Batch insert to database
                         if (buffer.length >= this.BATCH_SIZE) {
                             await this.db.bulkAddTracks(buffer);
-                            count += buffer.length;
-                            if (onProgress) onProgress(count);
                             buffer = [];
                         }
                     }
@@ -117,8 +182,6 @@ class FileSystemService {
         // Add remaining tracks
         if (buffer.length > 0) {
             await this.db.bulkAddTracks(buffer);
-            count += buffer.length;
-            if (onProgress) onProgress(count);
         }
 
         EventBus.emit('scan:completed', count);
