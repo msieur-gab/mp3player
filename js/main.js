@@ -343,3 +343,13 @@ window.toggleLogs = () => {
     const panel = document.getElementById('log-panel');
     panel.classList.toggle('expanded');
 };
+
+// Expose app and utilities to console for debugging
+window.app = app;
+window.showTopStats = async () => {
+    if (app.db) {
+        return await app.db.logTopStats();
+    } else {
+        console.error('Database not initialized yet');
+    }
+};

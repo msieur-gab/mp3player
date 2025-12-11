@@ -203,6 +203,124 @@ class DatabaseService {
             .limit(limit)
             .toArray();
     }
+
+    /**
+     * Get top artists by total play count
+     * @param {number} limit - Maximum number of artists to return
+     * @returns {Array} Array of {artist, playCount} objects, sorted by playCount descending
+     */
+    async getTopArtists(limit = 10) {
+        const allPlayCounts = await this.db.playCount.toArray();
+        const artistCounts = {};
+
+        // Aggregate play counts by artist
+        allPlayCounts.forEach(entry => {
+            // Parse trackKey: "title|artist|album"
+            const parts = entry.trackKey.split('|');
+            if (parts.length === 3) {
+                const artist = parts[1]; // artist is the second part
+                if (!artistCounts[artist]) {
+                    artistCounts[artist] = 0;
+                }
+                artistCounts[artist] += entry.playCount;
+            }
+        });
+
+        // Convert to array and sort
+        return Object.entries(artistCounts)
+            .map(([artist, playCount]) => ({ artist, playCount }))
+            .sort((a, b) => b.playCount - a.playCount)
+            .slice(0, limit);
+    }
+
+    /**
+     * Get top albums by total play count
+     * @param {number} limit - Maximum number of albums to return
+     * @returns {Array} Array of {album, artist, playCount} objects, sorted by playCount descending
+     */
+    async getTopAlbums(limit = 10) {
+        const allPlayCounts = await this.db.playCount.toArray();
+        const albumCounts = {};
+
+        // Aggregate play counts by album (including artist for disambiguation)
+        allPlayCounts.forEach(entry => {
+            // Parse trackKey: "title|artist|album"
+            const parts = entry.trackKey.split('|');
+            if (parts.length === 3) {
+                const artist = parts[1];
+                const album = parts[2];
+                const key = `${album}|${artist}`; // Composite key for uniqueness
+
+                if (!albumCounts[key]) {
+                    albumCounts[key] = {
+                        album: album,
+                        artist: artist,
+                        playCount: 0
+                    };
+                }
+                albumCounts[key].playCount += entry.playCount;
+            }
+        });
+
+        // Convert to array and sort
+        return Object.values(albumCounts)
+            .sort((a, b) => b.playCount - a.playCount)
+            .slice(0, limit);
+    }
+
+    /**
+     * Get top tracks by play count (with parsed metadata)
+     * @param {number} limit - Maximum number of tracks to return
+     * @returns {Array} Array of {title, artist, album, playCount, lastPlayed} objects
+     */
+    async getTopTracks(limit = 10) {
+        const entries = await this.getMostPlayed(limit);
+
+        // Parse trackKey and return enriched data
+        return entries.map(entry => {
+            const parts = entry.trackKey.split('|');
+            return {
+                title: parts[0] || 'Unknown',
+                artist: parts[1] || 'Unknown Artist',
+                album: parts[2] || 'Unknown Album',
+                playCount: entry.playCount,
+                lastPlayed: entry.lastPlayed
+            };
+        });
+    }
+
+    /**
+     * Log top 10 statistics to console
+     * Useful for testing and debugging
+     */
+    async logTopStats() {
+        console.log('\n========== TOP 10 STATISTICS ==========\n');
+
+        // Top Tracks
+        const topTracks = await this.getTopTracks(10);
+        console.log('🎵 TOP 10 TRACKS:');
+        topTracks.forEach((track, index) => {
+            console.log(`${index + 1}. "${track.title}" by ${track.artist} (${track.playCount} plays)`);
+        });
+
+        // Top Artists
+        const topArtists = await this.getTopArtists(10);
+        console.log('\n🎤 TOP 10 ARTISTS:');
+        topArtists.forEach((item, index) => {
+            console.log(`${index + 1}. ${item.artist} (${item.playCount} plays)`);
+        });
+
+        // Top Albums
+        const topAlbums = await this.getTopAlbums(10);
+        console.log('\n💿 TOP 10 ALBUMS:');
+        topAlbums.forEach((item, index) => {
+            console.log(`${index + 1}. "${item.album}" by ${item.artist} (${item.playCount} plays)`);
+        });
+
+        console.log('\n=======================================\n');
+
+        return { topTracks, topArtists, topAlbums };
+    }
 }
 
 export default DatabaseService;
