@@ -88,7 +88,7 @@ class MusicPlayerApp {
     setupEventListeners() {
         // Navigation events
         EventBus.on('navigation:back', () => this.switchView('ALBUMS'));
-        EventBus.on('album:selected', (albumName) => this.switchView('TRACKS', albumName, true));
+        EventBus.on('album:selected', (albumName) => this.switchView('TRACKS', albumName, false));
         EventBus.on('track:selected', (trackId) => this.playTrack(trackId));
 
         // Theme events
