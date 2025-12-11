@@ -7,8 +7,10 @@ class TrackList extends HTMLElement {
     constructor() {
         super();
         this.tracks = [];
+        this.albumData = null;
         this.currentTrackId = null;
         this.ROW_HEIGHT = 60;
+        this.HEADER_HEIGHT = 0;
     }
 
     connectedCallback() {
@@ -19,12 +21,14 @@ class TrackList extends HTMLElement {
 
     render() {
         this.innerHTML = `
+            <div id="album-header" class="album-header"></div>
             <div id="scroller-container">
                 <div id="scroller-phantom"></div>
                 <div id="scroller-content"></div>
             </div>
         `;
 
+        this.albumHeader = this.querySelector('#album-header');
         this.container = this.querySelector('#scroller-container');
         this.phantom = this.querySelector('#scroller-phantom');
         this.content = this.querySelector('#scroller-content');
@@ -44,13 +48,53 @@ class TrackList extends HTMLElement {
     }
 
     /**
-     * Set tracks data and render
+     * Set tracks data with album info and render
      */
-    setTracks(tracks) {
+    setTracks(tracks, albumData = null) {
         this.tracks = tracks;
+        this.albumData = albumData;
+
+        // Render album header if data provided
+        if (albumData) {
+            this.renderAlbumHeader();
+        } else {
+            this.albumHeader.innerHTML = '';
+            this.HEADER_HEIGHT = 0;
+        }
+
         this.phantom.style.height = `${tracks.length * this.ROW_HEIGHT}px`;
         this.container.scrollTop = 0;
         this.renderVisibleTracks();
+    }
+
+    /**
+     * Render album header with cover and metadata
+     */
+    renderAlbumHeader() {
+        const { name, artist, coverUrl, trackCount, year, genre } = this.albumData;
+
+        const metadata = [];
+        if (year) metadata.push(year);
+        if (genre) metadata.push(genre);
+        if (trackCount) metadata.push(`${trackCount} track${trackCount !== 1 ? 's' : ''}`);
+
+        this.albumHeader.innerHTML = `
+            <div class="album-header-cover">
+                ${coverUrl
+                    ? `<img src="${coverUrl}" alt="${name}" class="album-header-image">`
+                    : '<i class="ph ph-music-notes album-header-icon"></i>'}
+            </div>
+            <div class="album-header-info">
+                <h2 class="album-header-title">${name}</h2>
+                <p class="album-header-artist">${artist || 'Unknown Artist'}</p>
+                ${metadata.length > 0
+                    ? `<p class="album-header-meta">${metadata.join(' • ')}</p>`
+                    : ''}
+            </div>
+        `;
+
+        // Update header height for virtual scrolling offset
+        this.HEADER_HEIGHT = this.albumHeader.offsetHeight;
     }
 
     /**

@@ -265,9 +265,20 @@ class MusicPlayerApp {
                 return a.path.localeCompare(b.path, undefined, { numeric: true });
             });
 
+            // Prepare album data for header
+            const firstTrack = this.viewList[0] || {};
+            const albumData = {
+                name: albumName,
+                artist: firstTrack.artist || 'Unknown Artist',
+                coverUrl: this.metadata.albumCovers[albumName] || null,
+                trackCount: this.viewList.length,
+                year: firstTrack.year || null,
+                genre: firstTrack.genre || null
+            };
+
             this.components.albumGrid.hide();
             this.components.trackList.show();
-            this.components.trackList.setTracks(this.viewList);
+            this.components.trackList.setTracks(this.viewList, albumData);
             EventBus.emit('view:changed', { view: 'TRACKS', title: albumName });
 
             // Auto-play first track

@@ -81,8 +81,8 @@ class MetadataService {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                canvas.width = canvas.height = 200;
-                canvas.getContext('2d').drawImage(img, 0, 0, 200, 200);
+                canvas.width = canvas.height = 512;
+                canvas.getContext('2d').drawImage(img, 0, 0, 512, 512);
                 canvas.toBlob((blob) => {
                     if (blob) {
                         resolve(blob);
