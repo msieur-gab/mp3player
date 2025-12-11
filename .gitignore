@@ -36,3 +36,14 @@ build/
 
 # Old versions during development
 index_*.html
+
+# Local music files and test data
+music/
+inspiration/
+
+# Development notes
+todo.md
+
+# Prototype/experimental files
+visualizer-*.html
+js/new-visualizer.html
