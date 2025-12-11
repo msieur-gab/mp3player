@@ -88,7 +88,7 @@ class MusicPlayerApp {
     setupEventListeners() {
         // Navigation events
         EventBus.on('navigation:back', () => this.switchView('ALBUMS'));
-        EventBus.on('album:selected', (albumName) => this.switchView('TRACKS', albumName, true));
+        EventBus.on('album:selected', (albumName) => this.switchView('TRACKS', albumName, false));
         EventBus.on('track:selected', (trackId) => this.playTrack(trackId));
 
         // Theme events
@@ -342,4 +342,14 @@ document.addEventListener('DOMContentLoaded', () => {
 window.toggleLogs = () => {
     const panel = document.getElementById('log-panel');
     panel.classList.toggle('expanded');
+};
+
+// Expose app and utilities to console for debugging
+window.app = app;
+window.showTopStats = async () => {
+    if (app.db) {
+        return await app.db.logTopStats();
+    } else {
+        console.error('Database not initialized yet');
+    }
 };

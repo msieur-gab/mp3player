@@ -109,6 +109,9 @@ class PlaybackService {
             // Emit track started event
             EventBus.emit('track:started', track);
 
+            // Increment play count
+            await this.db.incrementPlayCount(track);
+
             // Extract and update metadata in background
             this.updateTrackMetadata(track, file);
 
