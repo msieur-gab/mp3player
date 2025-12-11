@@ -79,7 +79,7 @@ class TrackList extends HTMLElement {
         if (trackCount) metadata.push(`${trackCount} track${trackCount !== 1 ? 's' : ''}`);
 
         this.albumHeader.innerHTML = `
-            <div class="album-header-cover">
+            <div class="album-header-cover" id="album-cover-play">
                 ${coverUrl
                     ? `<img src="${coverUrl}" alt="${name}" class="album-header-image">`
                     : '<i class="ph ph-music-notes album-header-icon"></i>'}
@@ -92,6 +92,16 @@ class TrackList extends HTMLElement {
                     : ''}
             </div>
         `;
+
+        // Add click handler to play album
+        const coverEl = this.albumHeader.querySelector('#album-cover-play');
+        if (coverEl) {
+            coverEl.addEventListener('click', () => {
+                if (this.tracks.length > 0) {
+                    EventBus.emit('track:selected', this.tracks[0].id);
+                }
+            });
+        }
 
         // Update header height for virtual scrolling offset
         this.HEADER_HEIGHT = this.albumHeader.offsetHeight;

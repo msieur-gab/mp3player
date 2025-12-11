@@ -240,6 +240,7 @@ button:active { transform: scale(0.95); }
     align-items: center;
     justify-content: center;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
 }
 
 .album-header-image {
