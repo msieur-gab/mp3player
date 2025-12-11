@@ -7,8 +7,10 @@ class TrackList extends HTMLElement {
     constructor() {
         super();
         this.tracks = [];
+        this.albumData = null;
         this.currentTrackId = null;
         this.ROW_HEIGHT = 60;
+        this.visualizerService = null;
     }
 
     connectedCallback() {
@@ -19,12 +21,14 @@ class TrackList extends HTMLElement {
 
     render() {
         this.innerHTML = `
+            <div id="album-header" class="album-header"></div>
             <div id="scroller-container">
                 <div id="scroller-phantom"></div>
                 <div id="scroller-content"></div>
             </div>
         `;
 
+        this.albumHeader = this.querySelector('#album-header');
         this.container = this.querySelector('#scroller-container');
         this.phantom = this.querySelector('#scroller-phantom');
         this.content = this.querySelector('#scroller-content');
@@ -44,13 +48,88 @@ class TrackList extends HTMLElement {
     }
 
     /**
-     * Set tracks data and render
+     * Set visualizer service
      */
-    setTracks(tracks) {
+    setVisualizerService(visualizerService) {
+        this.visualizerService = visualizerService;
+    }
+
+    /**
+     * Set tracks data with album info and render
+     */
+    setTracks(tracks, albumData = null) {
         this.tracks = tracks;
+        this.albumData = albumData;
+
+        // Render album header with visualizer
+        if (albumData) {
+            this.renderAlbumHeader();
+        } else {
+            this.albumHeader.innerHTML = '';
+        }
+
         this.phantom.style.height = `${tracks.length * this.ROW_HEIGHT}px`;
         this.container.scrollTop = 0;
         this.renderVisibleTracks();
+    }
+
+    /**
+     * Render album header with visualizer and metadata
+     */
+    renderAlbumHeader() {
+        const { name, artist, trackCount, year, genre } = this.albumData;
+
+        const metadata = [];
+        if (year) metadata.push(year);
+        if (genre) metadata.push(genre);
+        if (trackCount) metadata.push(`${trackCount} track${trackCount !== 1 ? 's' : ''}`);
+
+        this.albumHeader.innerHTML = `
+            <div class="visualizer-container">
+                <canvas id="visualizer-canvas"></canvas>
+                <div class="pattern-switcher">
+                    <button class="pattern-btn active" data-pattern="needles">NEEDLES</button>
+                    <button class="pattern-btn" data-pattern="breath">BREATH</button>
+                    <button class="pattern-btn" data-pattern="horizon">HORIZON</button>
+                    <button class="pattern-btn" data-pattern="grid">LINES</button>
+                    <button class="pattern-btn" data-pattern="mosaic">MOSAIC</button>
+                </div>
+            </div>
+            <div class="album-header-info">
+                <h2 class="album-header-title">${name}</h2>
+                <p class="album-header-artist">${artist || 'Unknown Artist'}</p>
+                ${metadata.length > 0
+                    ? `<p class="album-header-meta">${metadata.join(' • ')}</p>`
+                    : ''}
+            </div>
+        `;
+
+        // Initialize visualizer with canvas
+        if (this.visualizerService) {
+            const canvas = this.albumHeader.querySelector('#visualizer-canvas');
+            this.visualizerService.init(canvas);
+            this.visualizerService.enable();
+        }
+
+        // Setup pattern switcher
+        this.setupPatternSwitcher();
+    }
+
+    /**
+     * Setup pattern switcher buttons
+     */
+    setupPatternSwitcher() {
+        const buttons = this.albumHeader.querySelectorAll('.pattern-btn');
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                buttons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const pattern = btn.dataset.pattern;
+                if (this.visualizerService) {
+                    this.visualizerService.setPattern(pattern);
+                }
+            });
+        });
     }
 
     /**

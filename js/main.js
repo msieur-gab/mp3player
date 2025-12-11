@@ -8,6 +8,7 @@ import FileSystemService from './services/FileSystemService.js';
 import MetadataService from './services/MetadataService.js';
 import PlaybackService from './services/PlaybackService.js';
 import ThemeService from './services/ThemeService.js';
+import VisualizerService from './services/VisualizerService.js';
 
 // Import components
 import './components/AppHeader.js';
@@ -22,6 +23,7 @@ class MusicPlayerApp {
         this.metadata = new MetadataService(this.db);
         this.fs = new FileSystemService(this.db, this.metadata);
         this.playback = new PlaybackService(this.metadata, this.db);
+        this.visualizer = new VisualizerService(this.playback);
         this.theme = new ThemeService();
 
         // Application state
@@ -57,6 +59,9 @@ class MusicPlayerApp {
             albumGrid: document.querySelector('album-grid'),
             trackList: document.querySelector('track-list')
         };
+
+        // Set visualizer service on TrackList
+        this.components.trackList.setVisualizerService(this.visualizer);
 
         // Get permission banner reference
         this.permissionBanner = document.getElementById('perm-banner');
@@ -110,6 +115,13 @@ class MusicPlayerApp {
 
         // Permission events
         EventBus.on('permission:needed', () => this.showPermissionBanner());
+
+        // Window resize - update visualizer canvas
+        window.addEventListener('resize', () => {
+            if (this.visualizer) {
+                this.visualizer.handleResize();
+            }
+        });
     }
 
     /**
@@ -265,9 +277,19 @@ class MusicPlayerApp {
                 return a.path.localeCompare(b.path, undefined, { numeric: true });
             });
 
+            // Prepare album data for header
+            const firstTrack = this.viewList[0] || {};
+            const albumData = {
+                name: albumName,
+                artist: firstTrack.artist || 'Unknown Artist',
+                trackCount: this.viewList.length,
+                year: firstTrack.year || null,
+                genre: firstTrack.genre || null
+            };
+
             this.components.albumGrid.hide();
             this.components.trackList.show();
-            this.components.trackList.setTracks(this.viewList);
+            this.components.trackList.setTracks(this.viewList, albumData);
             EventBus.emit('view:changed', { view: 'TRACKS', title: albumName });
 
             // Auto-play first track
