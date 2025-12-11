@@ -54,6 +54,17 @@ class DatabaseService {
                 console.log('[DatabaseService] Upgraded to v4: Added playCount table');
             });
 
+        // Schema v5 - Add covers table for persistent album artwork
+        this.db.version(5)
+            .stores({
+                tracks: '++id, title, artist, path, album, trackNumber, genre, year, duration',
+                playCount: '++id, &trackKey, playCount, lastPlayed',
+                covers: '++id, &albumKey, coverData'
+            })
+            .upgrade(tx => {
+                console.log('[DatabaseService] Upgraded to v5: Added covers table');
+            });
+
         await this.db.open();
         console.log('[DatabaseService] Initialized');
     }
@@ -133,6 +144,18 @@ class DatabaseService {
         const artist = (track.artist || 'Unknown Artist').toLowerCase().trim();
         const album = (track.album || 'Unknown Album').toLowerCase().trim();
         return `${title}|${artist}|${album}`;
+    }
+
+    /**
+     * Generate normalized album key for cover storage
+     * @param {string} album - Album name
+     * @param {string} artist - Artist name
+     * @returns {string} Normalized key: "album|artist"
+     */
+    generateAlbumKey(album, artist) {
+        const albumNorm = (album || 'Unknown Album').toLowerCase().trim();
+        const artistNorm = (artist || 'Unknown Artist').toLowerCase().trim();
+        return `${albumNorm}|${artistNorm}`;
     }
 
     /**
@@ -320,6 +343,30 @@ class DatabaseService {
         console.log('\n=======================================\n');
 
         return { topTracks, topArtists, topAlbums };
+    }
+
+    /**
+     * Save cover to database
+     * @param {string} album - Album name
+     * @param {string} artist - Artist name
+     * @param {string} data - Base64 WebP data URL
+     */
+    async saveCover(album, artist, data) {
+        await this.db.covers.put({
+            albumKey: this.generateAlbumKey(album, artist),
+            coverData: data
+        });
+    }
+
+    /**
+     * Get cover from database
+     * @param {string} album - Album name
+     * @param {string} artist - Artist name
+     * @returns {string|null} Base64 WebP data URL or null
+     */
+    async getCover(album, artist) {
+        const entry = await this.db.covers.get({ albumKey: this.generateAlbumKey(album, artist) });
+        return entry?.coverData || null;
     }
 }
 
