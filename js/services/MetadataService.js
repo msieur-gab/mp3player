@@ -74,7 +74,7 @@ class MetadataService {
     /**
      * Compress cover to WebP format for storage
      * @param {string} dataUrl - Original base64 data URL
-     * @returns {Promise<string>} Compressed WebP data URL
+     * @returns {Promise<Blob>} Compressed WebP blob
      */
     async compressCover(dataUrl) {
         return new Promise((resolve, reject) => {
@@ -83,7 +83,13 @@ class MetadataService {
                 const canvas = document.createElement('canvas');
                 canvas.width = canvas.height = 200;
                 canvas.getContext('2d').drawImage(img, 0, 0, 200, 200);
-                resolve(canvas.toDataURL('image/webp', 0.85));
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Failed to create blob'));
+                    }
+                }, 'image/webp', 0.85);
             };
             img.onerror = reject;
             img.src = dataUrl;
@@ -105,8 +111,10 @@ class MetadataService {
             // Check database first (fast path)
             const cached = await this.db.getCover(albumName, track.artist);
             if (cached) {
-                this.albumCovers[albumName] = cached;
-                EventBus.emit('albumCover:extracted', { albumName, coverUrl: cached });
+                // Convert blob to object URL for rendering
+                const coverUrl = URL.createObjectURL(cached);
+                this.albumCovers[albumName] = coverUrl;
+                EventBus.emit('albumCover:extracted', { albumName, coverUrl });
                 continue;
             }
 
@@ -117,8 +125,10 @@ class MetadataService {
                 if (cover) {
                     const compressed = await this.compressCover(cover);
                     await this.db.saveCover(albumName, track.artist, compressed);
-                    this.albumCovers[albumName] = compressed;
-                    EventBus.emit('albumCover:extracted', { albumName, coverUrl: compressed });
+                    // Convert blob to object URL for rendering
+                    const coverUrl = URL.createObjectURL(compressed);
+                    this.albumCovers[albumName] = coverUrl;
+                    EventBus.emit('albumCover:extracted', { albumName, coverUrl });
                 }
             } catch (error) {
                 console.warn(`[MetadataService] Could not extract cover for ${albumName}`);

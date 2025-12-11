@@ -349,7 +349,7 @@ class DatabaseService {
      * Save cover to database
      * @param {string} album - Album name
      * @param {string} artist - Artist name
-     * @param {string} data - Base64 WebP data URL
+     * @param {Blob} data - WebP blob
      */
     async saveCover(album, artist, data) {
         await this.db.covers.put({
@@ -362,7 +362,7 @@ class DatabaseService {
      * Get cover from database
      * @param {string} album - Album name
      * @param {string} artist - Artist name
-     * @returns {string|null} Base64 WebP data URL or null
+     * @returns {Blob|null} WebP blob or null
      */
     async getCover(album, artist) {
         const entry = await this.db.covers.get({ albumKey: this.generateAlbumKey(album, artist) });
