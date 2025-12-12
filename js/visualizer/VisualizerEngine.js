@@ -43,6 +43,7 @@ class VisualizerEngine {
 
         // OPTIMIZATION 3: Page Visibility API
         this.isPageVisible = !document.hidden;
+        this.visibilityHandler = this.handleVisibilityChange.bind(this);
         this.setupVisibilityHandler();
 
         // OPTIMIZATION 4: Adaptive Quality
@@ -59,21 +60,27 @@ class VisualizerEngine {
 
     /**
      * OPTIMIZATION 3: Setup page visibility handler
+     * Memory leak fix: Store handler for removal in destroy
      */
     setupVisibilityHandler() {
-        document.addEventListener('visibilitychange', () => {
-            this.isPageVisible = !document.hidden;
-            console.log(`[VisualizerEngine] 👁️ Visibility: ${this.isPageVisible ? 'VISIBLE' : 'HIDDEN'}`);
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
 
-            if (this.isPageVisible && this.enabled) {
-                console.log('[VisualizerEngine] ▶️ Resuming (tab visible)');
-                this.startRenderLoop();
-            } else if (!this.isPageVisible && this.animationFrameId) {
-                console.log('[VisualizerEngine] ⏸️ Pausing (tab hidden)');
-                cancelAnimationFrame(this.animationFrameId);
-                this.animationFrameId = null;
-            }
-        });
+    /**
+     * Handle visibility change events
+     */
+    handleVisibilityChange() {
+        this.isPageVisible = !document.hidden;
+        console.log(`[VisualizerEngine] 👁️ Visibility: ${this.isPageVisible ? 'VISIBLE' : 'HIDDEN'}`);
+
+        if (this.isPageVisible && this.enabled) {
+            console.log('[VisualizerEngine] ▶️ Resuming (tab visible)');
+            this.startRenderLoop();
+        } else if (!this.isPageVisible && this.animationFrameId) {
+            console.log('[VisualizerEngine] ⏸️ Pausing (tab hidden)');
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
     }
 
     /**
@@ -287,12 +294,16 @@ class VisualizerEngine {
 
     /**
      * Destroy visualizer engine and cleanup resources
+     * Memory leak fix: Remove visibility listener
      */
     destroy() {
         console.log('[VisualizerEngine] 🗑️ Destroying visualizer engine');
 
         // Stop animation loop
         this.disable();
+
+        // Memory leak fix: Remove visibility change listener
+        document.removeEventListener('visibilitychange', this.visibilityHandler);
 
         // Clear canvas
         this.clearCanvas();

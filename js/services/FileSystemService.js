@@ -10,22 +10,31 @@ class FileSystemService {
         this.dirHandleRoot = null;
         this.BATCH_SIZE = 500;
 
+        // Memory leak fix: Store bound handler for removal
+        this.visibilityHandler = this.handleVisibilityChange.bind(this);
+
         // Setup visibility handler to re-check permissions
         this.setupVisibilityHandler();
     }
 
     /**
      * Setup page visibility handler to re-check permissions
+     * Memory leak fix: Use bound handler for removal
      */
     setupVisibilityHandler() {
-        document.addEventListener('visibilitychange', async () => {
-            if (!document.hidden && this.dirHandleRoot) {
-                const perm = await this.dirHandleRoot.queryPermission({ mode: 'read' });
-                if (perm !== 'granted') {
-                    EventBus.emit('permission:needed');
-                }
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+
+    /**
+     * Handle visibility change events
+     */
+    async handleVisibilityChange() {
+        if (!document.hidden && this.dirHandleRoot) {
+            const perm = await this.dirHandleRoot.queryPermission({ mode: 'read' });
+            if (perm !== 'granted') {
+                EventBus.emit('permission:needed');
             }
-        });
+        }
     }
 
     /**
@@ -234,6 +243,15 @@ class FileSystemService {
      */
     getDirectoryHandle() {
         return this.dirHandleRoot;
+    }
+
+    /**
+     * Cleanup resources
+     * Memory leak fix: Remove visibility listener
+     */
+    destroy() {
+        console.log('[FileSystemService] 🗑️ Destroying service');
+        document.removeEventListener('visibilitychange', this.visibilityHandler);
     }
 }
 
