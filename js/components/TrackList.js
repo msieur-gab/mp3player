@@ -109,11 +109,9 @@ class TrackList extends HTMLElement {
             const canvas = this.albumHeader.querySelector('#visualizer-canvas');
             this.visualizerService.init(canvas);
 
-            // Enable if audio is already playing
-            const audio = this.visualizerService.playback.audio;
-            if (audio && !audio.paused) {
-                this.visualizerService.enable();
-            }
+            // Always enable visualizer for immediate UX feedback
+            // (adaptive FPS will use 1 FPS when paused, 30 FPS when playing)
+            this.visualizerService.enable();
         }
 
         // Setup pattern switcher
