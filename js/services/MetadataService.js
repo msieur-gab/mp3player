@@ -111,6 +111,12 @@ class MetadataService {
             // Check database first (fast path)
             const cached = await this.db.getCover(albumName, track.artist);
             if (cached) {
+                // Memory leak fix: Revoke old URL before replacing
+                const existingUrl = this.albumCovers[albumName];
+                if (existingUrl && existingUrl.startsWith('blob:')) {
+                    URL.revokeObjectURL(existingUrl);
+                }
+
                 // Convert blob to object URL for rendering
                 const coverUrl = URL.createObjectURL(cached);
                 this.albumCovers[albumName] = coverUrl;
@@ -125,6 +131,13 @@ class MetadataService {
                 if (cover) {
                     const compressed = await this.compressCover(cover);
                     await this.db.saveCover(albumName, track.artist, compressed);
+
+                    // Memory leak fix: Revoke old URL before replacing
+                    const existingUrl = this.albumCovers[albumName];
+                    if (existingUrl && existingUrl.startsWith('blob:')) {
+                        URL.revokeObjectURL(existingUrl);
+                    }
+
                     // Convert blob to object URL for rendering
                     const coverUrl = URL.createObjectURL(compressed);
                     this.albumCovers[albumName] = coverUrl;
@@ -149,8 +162,14 @@ class MetadataService {
 
     /**
      * Clear album cover cache
+     * Memory leak fix: Revoke all object URLs before clearing
      */
     clearCoverCache() {
+        Object.values(this.albumCovers).forEach(url => {
+            if (url && url.startsWith('blob:')) {
+                URL.revokeObjectURL(url);
+            }
+        });
         this.albumCovers = {};
     }
 
