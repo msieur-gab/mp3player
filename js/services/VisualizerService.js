@@ -126,6 +126,15 @@ class VisualizerService {
                 this.audioContext = new AudioContext();
             }
 
+            // Disconnect old analyser before creating new one (prevents audio overlap)
+            if (this.analyser) {
+                try {
+                    this.analyser.disconnect();
+                } catch (e) {
+                    // Already disconnected, ignore
+                }
+            }
+
             // Create analyser node
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 512;
@@ -140,9 +149,16 @@ class VisualizerService {
             // Create media element source if not already created
             if (!this.mediaSource) {
                 this.mediaSource = this.audioContext.createMediaElementSource(this.playback.audio);
+            } else {
+                // Disconnect mediaSource from old analyser before reconnecting
+                try {
+                    this.mediaSource.disconnect();
+                } catch (e) {
+                    // Already disconnected, ignore
+                }
             }
 
-            // Connect: audio -> analyser -> destination
+            // Connect: audio -> analyser -> destination (fresh connections, no duplicates)
             this.mediaSource.connect(this.analyser);
             this.analyser.connect(this.audioContext.destination);
         } catch (error) {
