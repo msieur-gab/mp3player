@@ -81,8 +81,7 @@ class VisualizerService {
 
         const unsubPause = EventBus.on('playback:pause', () => {
             console.log('[VisualizerService] ⏸️ Pause event received');
-            // Don't disable - let adaptive FPS handle it (switches to 1 FPS automatically)
-            // This allows pattern switching to work when paused
+            this.disable(); // Stop all rendering (0 FPS, freeze frame)
         });
 
         this.eventUnsubscribers.push(unsubPlay, unsubPause);
@@ -157,8 +156,8 @@ class VisualizerService {
             isPlaying
         };
 
-        // Clear canvas with fade effect
-        this.visualizerEngine.clearWithFade(0.2);
+        // Clear canvas completely (no fade - crisp 100% opacity)
+        this.visualizerEngine.clearCanvas();
 
         // Render active pattern
         const pattern = this.patterns[this.activePattern];
@@ -183,15 +182,26 @@ class VisualizerService {
         if (this.patterns[patternName]) {
             this.activePattern = patternName;
 
-            // Clear canvas to prevent overlap when switching at 1 FPS (idle/paused)
+            // Clear canvas to prevent overlap
             if (this.visualizerEngine) {
                 this.visualizerEngine.clearCanvas();
             }
 
-            // Render immediately for instant visual feedback (don't wait for next frame at 1 FPS)
-            if (this.visualizerEngine && this.visualizerEngine.enabled) {
-                const isPlaying = this.playback.audio && !this.playback.audio.paused;
-                this.renderFrame(isPlaying);
+            // Check if paused
+            const isPlaying = this.playback.audio && !this.playback.audio.paused;
+
+            if (!isPlaying) {
+                // When paused: Enable, render once, then disable again
+                this.enable();
+                if (this.visualizerEngine && this.visualizerEngine.enabled) {
+                    this.renderFrame(false); // Render single frozen frame
+                    this.disable(); // Stop immediately (0 FPS)
+                }
+            } else {
+                // When playing: Just render (loop continues normally)
+                if (this.visualizerEngine && this.visualizerEngine.enabled) {
+                    this.renderFrame(true);
+                }
             }
 
             console.log(`[VisualizerService] 🎭 Pattern changed to: ${patternName}`);
