@@ -9,6 +9,23 @@ class FileSystemService {
         this.metadata = metadataService;
         this.dirHandleRoot = null;
         this.BATCH_SIZE = 500;
+
+        // Setup visibility handler to re-check permissions
+        this.setupVisibilityHandler();
+    }
+
+    /**
+     * Setup page visibility handler to re-check permissions
+     */
+    setupVisibilityHandler() {
+        document.addEventListener('visibilitychange', async () => {
+            if (!document.hidden && this.dirHandleRoot) {
+                const perm = await this.dirHandleRoot.queryPermission({ mode: 'read' });
+                if (perm !== 'granted') {
+                    EventBus.emit('permission:needed');
+                }
+            }
+        });
     }
 
     /**
@@ -59,12 +76,36 @@ class FileSystemService {
     }
 
     /**
+     * Check and request permission if needed
+     * @returns {Promise<boolean>} True if granted, false otherwise
+     */
+    async ensurePermission() {
+        if (!this.dirHandleRoot) return false;
+
+        const perm = await this.dirHandleRoot.queryPermission({ mode: 'read' });
+        if (perm === 'granted') return true;
+
+        // Emit event to notify UI
+        EventBus.emit('permission:needed');
+
+        // Try to request permission
+        const newPerm = await this.dirHandleRoot.requestPermission({ mode: 'read' });
+        return newPerm === 'granted';
+    }
+
+    /**
      * Scan directory for music files
      * @param {function} onProgress - Progress callback (count, currentFile)
      */
     async scanDirectory(onProgress) {
         if (!this.dirHandleRoot) {
             throw new Error('No directory handle available');
+        }
+
+        // Check permission before scanning
+        const hasPermission = await this.ensurePermission();
+        if (!hasPermission) {
+            throw new Error('Permission denied');
         }
 
         // Clear existing tracks
