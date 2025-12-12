@@ -39,7 +39,7 @@ export function drawMosaic(ctx, width, height, frame, noise) {
             let size;
             if (!isPlaying) {
                 size = 2.0;
-                ctx.fillStyle = `rgba(255, 255, 255, 0.3)`;
+                ctx.fillStyle = `rgba(255, 255, 255, 1.0)`;
             } else {
                 size = 0.5 + (val * 3.5);
                 size = Math.max(0.5, Math.min(4.0, size));

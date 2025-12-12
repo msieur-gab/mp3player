@@ -51,7 +51,7 @@ export function drawHorizon(ctx, width, height, frame, noise) {
             ctx.lineWidth = Math.min(4.0, 0.5 + (t * 2.0) + (beatPulse * 1.5));
         }
 
-        const alpha = 0.2 + (t * 0.6) + (baseVal * 0.4);
+        const alpha = !isPlaying ? 1.0 : (0.2 + (t * 0.6) + (baseVal * 0.4));
         ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, alpha)})`;
         ctx.stroke();
     }

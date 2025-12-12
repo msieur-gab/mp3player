@@ -41,7 +41,7 @@ export function drawNeedles(ctx, width, height, frame, noise) {
 
             // 1. ROOT DOTS
             const currentSize = 1.5;
-            const dotAlpha = 0.4 + (0.6 * (1 - normDist));
+            const dotAlpha = !isPlaying ? 1.0 : (0.4 + (0.6 * (1 - normDist)));
 
             ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, dotAlpha)})`;
             ctx.beginPath();
@@ -62,7 +62,7 @@ export function drawNeedles(ctx, width, height, frame, noise) {
             const tipX = x + Math.cos(angle) * length;
             const tipY = y + Math.sin(angle) * length;
 
-            const lineAlpha = 0.2 + (audioVal * 0.8);
+            const lineAlpha = !isPlaying ? 1.0 : (0.2 + (audioVal * 0.8));
 
             let thickness;
             if (!isPlaying) {

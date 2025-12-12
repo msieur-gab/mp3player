@@ -54,7 +54,7 @@ export function drawBreath(ctx, width, height, frame, noise) {
             const x2 = x + Math.cos(angle) * halfLength;
             const y2 = y + Math.sin(angle) * halfLength;
 
-            const alpha = !isPlaying ? 0.4 : (0.15 + audioVal * 0.85);
+            const alpha = !isPlaying ? 1.0 : (0.15 + audioVal * 0.85);
 
             ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
             ctx.lineWidth = thickness;

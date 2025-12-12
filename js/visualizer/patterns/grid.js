@@ -46,7 +46,7 @@ export function drawGrid(ctx, width, height, frame, noise) {
 
             if (!isPlaying) {
                 ctx.lineWidth = 1.5;
-                ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`;
+                ctx.strokeStyle = `rgba(255, 255, 255, 1.0)`;
             } else {
                 let th = 0.5 + (t * 1.0) + (bassVal * 2.5 * t);
                 ctx.lineWidth = Math.min(4.0, th);
