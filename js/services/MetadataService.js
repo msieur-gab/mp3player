@@ -72,28 +72,65 @@ class MetadataService {
     }
 
     /**
+     * Compress cover art to WebP 200x200 Blob
+     * @param {string} dataUrl - Base64 image data URL
+     * @returns {Promise<Blob>} Compressed WebP blob
+     */
+    async compressCover(dataUrl) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = canvas.height = 200;
+                canvas.getContext('2d').drawImage(img, 0, 0, 200, 200);
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Failed to create blob'));
+                    }
+                }, 'image/webp', 0.85);
+            };
+            img.onerror = reject;
+            img.src = dataUrl;
+        });
+    }
+
+    /**
      * Extract album covers for a list of albums
      * @param {Object} albums - Albums object { "Album Name": [tracks...] }
      */
     async extractAlbumCovers(albums) {
-        const albumNames = Object.keys(albums);
-
-        for (const albumName of albumNames) {
-            // Skip if already cached
+        for (const albumName of Object.keys(albums)) {
+            // Skip if already in memory cache
             if (this.albumCovers[albumName]) continue;
 
-            const firstTrack = albums[albumName][0];
-            if (!firstTrack || !firstTrack.handle) continue;
+            const track = albums[albumName][0];
+            if (!track?.handle) continue;
 
+            // Check database first (fast path)
+            const cached = await this.db.getCover(albumName, track.artist);
+            if (cached) {
+                // Convert blob to object URL for rendering
+                const coverUrl = URL.createObjectURL(cached);
+                this.albumCovers[albumName] = coverUrl;
+                EventBus.emit('albumCover:extracted', { albumName, coverUrl });
+                continue;
+            }
+
+            // Extract from file if not cached (slow path)
             try {
-                const file = await firstTrack.handle.getFile();
-                const coverUrl = await this.extractAlbumArt(file);
-                if (coverUrl) {
+                const file = await track.handle.getFile();
+                const cover = await this.extractAlbumArt(file);
+                if (cover) {
+                    const compressed = await this.compressCover(cover);
+                    await this.db.saveCover(albumName, track.artist, compressed);
+                    // Convert blob to object URL for rendering
+                    const coverUrl = URL.createObjectURL(compressed);
                     this.albumCovers[albumName] = coverUrl;
                     EventBus.emit('albumCover:extracted', { albumName, coverUrl });
                 }
             } catch (error) {
-                // Skip if file can't be read
                 console.warn(`[MetadataService] Could not extract cover for ${albumName}`);
             }
         }

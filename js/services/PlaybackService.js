@@ -133,20 +133,32 @@ class PlaybackService {
     async updateTrackMetadata(track, file) {
         const { tags } = await this.metadata.updateTrackMetadata(track, file);
 
-        if (tags) {
-            // Update Media Session with metadata
-            if ('mediaSession' in navigator && tags.picture) {
-                const coverUrl = await this.metadata.extractAlbumArt(file);
-                if (coverUrl) {
-                    navigator.mediaSession.metadata = new MediaMetadata({
-                        title: tags.title || track.title,
-                        artist: tags.artist || track.artist,
-                        album: track.album,
-                        artwork: [{ src: coverUrl, sizes: '512x512', type: tags.picture.format }]
-                    });
+        if (tags && 'mediaSession' in navigator) {
+            let coverUrl = null;
 
-                    EventBus.emit('track:artworkLoaded', coverUrl);
+            // Check database first for cached cover (fast)
+            const cachedCover = await this.db.getCover(track.album, track.artist);
+            if (cachedCover) {
+                coverUrl = URL.createObjectURL(cachedCover);
+            } else if (tags.picture) {
+                // Extract and compress if not cached (slow)
+                const extracted = await this.metadata.extractAlbumArt(file);
+                if (extracted) {
+                    const compressed = await this.metadata.compressCover(extracted);
+                    await this.db.saveCover(track.album, track.artist, compressed);
+                    coverUrl = URL.createObjectURL(compressed);
                 }
+            }
+
+            if (coverUrl) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: tags.title || track.title,
+                    artist: tags.artist || track.artist,
+                    album: track.album,
+                    artwork: [{ src: coverUrl, sizes: '512x512', type: 'image/webp' }]
+                });
+
+                EventBus.emit('track:artworkLoaded', coverUrl);
             }
         }
     }
