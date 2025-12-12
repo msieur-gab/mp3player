@@ -183,8 +183,18 @@ class AudioEngine {
             }
         }
 
+        // Memory leak fix: Close AudioContext to release system audio resources
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+            this.audioContext.close().then(() => {
+                console.log('[AudioEngine] 🔇 AudioContext closed');
+            }).catch(error => {
+                console.error('[AudioEngine] Error closing AudioContext:', error);
+            });
+        }
+
         this.rawDataArray = null;
         this.spectrumArray = null;
+        this.audioContext = null;
     }
 }
 
