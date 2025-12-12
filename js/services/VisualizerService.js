@@ -1,82 +1,40 @@
 /**
- * VisualizerService - Audio visualization with 30fps patterns
- * Integrates with PlaybackService for audio analysis
+ * VisualizerService - Refactored with Engine/Art separation
+ *
+ * This service coordinates between:
+ * - AudioEngine: Audio analysis and frequency data
+ * - VisualizerEngine: Canvas rendering and animation loop
+ * - Patterns: Visual effects (completely stateless)
+ * - Noise: Perlin noise generator for organic motion
+ *
+ * Key Benefits of this architecture:
+ * - Clean separation of concerns (audio, canvas, visuals)
+ * - Easy to add/remove/customize patterns
+ * - Patterns are completely stateless and portable
+ * - Engines can be reused in other contexts
+ * - Better testability and maintainability
  */
 import EventBus from '../utils/EventBus.js';
+import AudioEngine from '../visualizer/AudioEngine.js';
+import VisualizerEngine from '../visualizer/VisualizerEngine.js';
 import Noise from '../visualizer/utils.js';
-import { drawNeedles, drawBreath, drawHorizon, drawGrid, drawMosaic } from '../visualizer/patterns.js';
+import { PATTERNS, getPatternNames } from '../visualizer/patterns/index.js';
 
 class VisualizerService {
     constructor(playbackService) {
         this.playback = playbackService;
+
+        // Engines
+        this.audioEngine = null;
+        this.visualizerEngine = null;
         this.noise = new Noise();
 
-        // Canvas state
-        this.canvas = null;
-        this.ctx = null;
-        this.width = 0;
-        this.height = 0;
-
-        // Audio analysis
-        this.audioContext = null;
-        this.mediaSource = null;
-        this.analyser = null;
-
-        // OPTIMIZATION 1: Zero-Allocation - Pre-allocate audio data arrays
-        // These are reused every frame instead of creating new ones (prevents GC pauses)
-        this.rawDataArray = null;      // Uint8Array - reused
-        this.spectrumArray = null;     // Float32Array - reused
-        this.binCount = 256;           // Default, updated when analyser is ready
-
-        // Animation state
-        this.enabled = false;
+        // State
         this.activePattern = 'needles';
-        this.time = 0;
-        this.animationFrameId = null;
+        this.patterns = PATTERNS;
 
-        // Frame rate control (configurable FPS throttling)
-        this.targetFps = 30; // Lower FPS = better battery life
-        this.frameInterval = 1000 / this.targetFps;
-        this.lastFrameTime = 0;
-
-        // Pattern registry
-        this.patterns = {
-            needles: drawNeedles,
-            breath: drawBreath,
-            horizon: drawHorizon,
-            grid: drawGrid,
-            mosaic: drawMosaic
-        };
-
-        // Beat detection
-        this.beatThreshold = 0.55;
-        this.beatDecay = 0.95;
-        this.currentPulse = 0;
-
-        // OPTIMIZATION 4: Adaptive Quality - Detect mobile device
-        this.isMobile = window.innerWidth < 600;
-        this.qualityMultiplier = this.isMobile ? 0.85 : 1.0; // 28% reduction on mobile (maintains visual richness)
-
-        // OPTIMIZATION 3: Page Visibility API - Stop rendering when tab hidden
-        this.isPageVisible = !document.hidden;
-        this.setupVisibilityHandler();
-    }
-
-    /**
-     * OPTIMIZATION 3: Setup page visibility handler to pause when tab hidden
-     */
-    setupVisibilityHandler() {
-        document.addEventListener('visibilitychange', () => {
-            this.isPageVisible = !document.hidden;
-
-            if (this.isPageVisible && this.enabled) {
-                // Resume animation when tab becomes visible
-                this.render();
-            } else if (!this.isPageVisible && this.animationFrameId) {
-                // Stop animation when tab hidden (prevents battery drain)
-                cancelAnimationFrame(this.animationFrameId);
-                this.animationFrameId = null;
-            }
+        console.log('[VisualizerService] 🎬 Initialized', {
+            availablePatterns: getPatternNames()
         });
     }
 
@@ -84,122 +42,120 @@ class VisualizerService {
      * Initialize with canvas element
      */
     init(canvasElement) {
-        this.canvas = canvasElement;
-        this.ctx = this.canvas.getContext('2d');
-        this.setupCanvas();
-        this.setupAudioAnalyser();
+        // Initialize engines
+        this.audioEngine = new AudioEngine(this.playback.audio);
+        this.visualizerEngine = new VisualizerEngine(canvasElement, this.playback.audio);
+
+        // Setup engines
+        this.audioEngine.init();
+        this.visualizerEngine.init();
+
+        // Setup playback listeners
+        this.setupPlaybackListeners();
+
+        console.log('[VisualizerService] ✅ Initialization complete');
     }
 
     /**
-     * Setup canvas with device pixel ratio
-     * OPTIMIZATION 2: Cap DPR to prevent excessive pixel rendering on high-DPI screens
+     * Setup playback event listeners
      */
-    setupCanvas() {
-        if (!this.canvas) return;
+    setupPlaybackListeners() {
+        EventBus.on('playback:play', () => {
+            console.log('[VisualizerService] ▶️ Play event received');
+            this.enable();
+        });
 
-        // Cap DPR at 1.5 to prevent 9x-16x pixel rendering on high-end phones
-        // iPhone 14 Pro has DPR 3.0, this reduces pixels by 75% with no visual loss
-        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-        const rect = this.canvas.getBoundingClientRect();
-        this.canvas.width = rect.width * dpr;
-        this.canvas.height = rect.height * dpr;
-        this.ctx.scale(dpr, dpr);
-        this.width = rect.width;
-        this.height = rect.height;
+        EventBus.on('playback:pause', () => {
+            console.log('[VisualizerService] ⏸️ Pause event received');
+            this.disable();
+        });
     }
 
     /**
-     * Setup audio analyser node connected to playback
-     * OPTIMIZATION 1: Allocate audio data arrays once here
+     * Enable visualizer
      */
-    setupAudioAnalyser() {
-        // Wait for PlaybackService audio element
-        if (!this.playback.audio) {
-            console.warn('[VisualizerService] Audio element not ready');
+    enable() {
+        if (!this.visualizerEngine || !this.audioEngine) {
+            console.warn('[VisualizerService] ⚠️ Engines not initialized');
             return;
         }
 
-        try {
-            // Create audio context if needed
-            if (!this.audioContext) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                this.audioContext = new AudioContext();
-            }
-
-            // Disconnect old analyser before creating new one (prevents audio overlap)
-            if (this.analyser) {
-                try {
-                    this.analyser.disconnect();
-                } catch (e) {
-                    // Already disconnected, ignore
-                }
-            }
-
-            // Create analyser node
-            this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 512;
-            this.analyser.smoothingTimeConstant = 0.8;
-
-            // OPTIMIZATION 1: Pre-allocate arrays ONCE (not every frame)
-            // This prevents garbage collection pauses that caused audio glitches
-            this.binCount = this.analyser.frequencyBinCount;
-            this.rawDataArray = new Uint8Array(this.binCount);
-            this.spectrumArray = new Float32Array(this.binCount);
-
-            // Create media element source if not already created
-            if (!this.mediaSource) {
-                this.mediaSource = this.audioContext.createMediaElementSource(this.playback.audio);
-            } else {
-                // Disconnect mediaSource from old analyser before reconnecting
-                try {
-                    this.mediaSource.disconnect();
-                } catch (e) {
-                    // Already disconnected, ignore
-                }
-            }
-
-            // Connect: audio -> analyser -> destination (fresh connections, no duplicates)
-            this.mediaSource.connect(this.analyser);
-            this.analyser.connect(this.audioContext.destination);
-        } catch (error) {
-            console.error('[VisualizerService] Error setting up analyser:', error);
-        }
-    }
-
-    /**
-     * Enable visualizer and start rendering
-     */
-    enable() {
-        if (this.enabled) return;
-        this.enabled = true;
-        this.time = 0;
-        this.lastFrameTime = performance.now(); // Reset timer
-
-        // Ensure audio analyser is connected
-        if (!this.analyser) {
-            this.setupAudioAnalyser();
+        // Ensure audio engine is connected
+        if (!this.audioEngine.analyser) {
+            this.audioEngine.init();
         }
 
+        // Enable visualizer engine
+        this.visualizerEngine.enable();
+
+        // Start render loop
         this.render();
+
+        console.log('[VisualizerService] 🎨 Enabled', {
+            pattern: this.activePattern
+        });
     }
 
     /**
-     * Disable visualizer and stop rendering
+     * Disable visualizer
+     * Freezes last frame on canvas (0 FPS, zero resources, 1 line)
      */
     disable() {
-        if (!this.enabled) return;
-        this.enabled = false;
+        if (this.visualizerEngine) {
+            this.visualizerEngine.disable();
+            console.log('[VisualizerService] 🛑 Disabled (freeze frame, 0 FPS)');
+        }
+    }
 
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
+    /**
+     * Main render loop
+     * Coordinates between engines and patterns
+     */
+    render() {
+        if (!this.visualizerEngine.enabled) return;
+
+        // Use the visualizer engine's render loop
+        this.visualizerEngine.renderLoop(
+            performance.now(),
+            (isPlaying) => this.renderFrame(isPlaying)
+        );
+    }
+
+    /**
+     * Render a single frame
+     * This is where Engine meets Art
+     */
+    renderFrame(isPlaying) {
+        // Get audio data from AudioEngine
+        const audioData = this.audioEngine.getFrameData();
+
+        // Get frame metadata from VisualizerEngine
+        const frameMetadata = this.visualizerEngine.getFrameMetadata();
+
+        // Combine into complete frame data for patterns
+        const frame = {
+            ...audioData,
+            ...frameMetadata,
+            isPlaying
+        };
+
+        // Clear canvas with fade effect
+        this.visualizerEngine.clearWithFade(0.2);
+
+        // Render active pattern
+        const pattern = this.patterns[this.activePattern];
+        if (pattern && pattern.draw) {
+            pattern.draw(
+                this.visualizerEngine.ctx,
+                this.visualizerEngine.width,
+                this.visualizerEngine.height,
+                frame,
+                this.noise
+            );
         }
 
-        // Clear canvas
-        if (this.ctx) {
-            this.ctx.fillStyle = '#000';
-            this.ctx.fillRect(0, 0, this.width, this.height);
-        }
+        // Continue render loop
+        this.render();
     }
 
     /**
@@ -208,112 +164,49 @@ class VisualizerService {
     setPattern(patternName) {
         if (this.patterns[patternName]) {
             this.activePattern = patternName;
-        }
-    }
-
-    /**
-     * Get audio frame data for rendering
-     * OPTIMIZATION 1: ZERO ALLOCATION - Reuse pre-allocated arrays
-     */
-    getFrameData() {
-        // If arrays aren't allocated yet, use fallback (shouldn't happen after init)
-        if (!this.rawDataArray || !this.spectrumArray) {
-            this.binCount = this.analyser ? this.analyser.frequencyBinCount : 128;
-            this.rawDataArray = new Uint8Array(this.binCount);
-            this.spectrumArray = new Float32Array(this.binCount);
-        }
-
-        if (this.analyser) {
-            // CRITICAL: Reuse existing array, don't create new one
-            this.analyser.getByteFrequencyData(this.rawDataArray);
-
-            // CRITICAL: Overwrite values in pre-allocated array
-            for (let i = 0; i < this.binCount; i++) {
-                this.spectrumArray[i] = this.rawDataArray[i] / 255;
-            }
-        }
-
-        // Calculate frequency bands (using cached spectrum array)
-        const getAvg = (start, end) => {
-            let sum = 0;
-            for (let i = start; i < end; i++) sum += this.spectrumArray[i] || 0;
-            return sum / (end - start || 1);
-        };
-
-        const bass = getAvg(0, 8);
-        const mid = getAvg(8, 64);
-        const high = getAvg(64, 128);
-        const overall = getAvg(0, this.binCount);
-
-        // Beat detection
-        if (bass > this.beatThreshold && this.currentPulse < 0.2) {
-            this.currentPulse = 1.0;
+            console.log(`[VisualizerService] 🎭 Pattern changed to: ${patternName}`);
         } else {
-            this.currentPulse *= this.beatDecay;
+            console.warn(`[VisualizerService] ⚠️ Pattern not found: ${patternName}`);
         }
-
-        return {
-            spectrum: this.spectrumArray,  // Return cached array (not a new one)
-            energy: { bass, mid, high, overall },
-            beatPulse: this.currentPulse,
-            time: this.time,
-            isPlaying: this.playback.audio && !this.playback.audio.paused,
-            qualityMultiplier: this.qualityMultiplier  // OPTIMIZATION 4: Pass quality setting
-        };
     }
 
     /**
-     * Main render loop with configurable FPS throttling
-     * OPTIMIZATION 3: Respects page visibility to prevent battery drain
+     * Get available pattern names
      */
-    render(currentTime) {
-        if (!this.enabled) return;
+    getPatternNames() {
+        return Object.keys(this.patterns);
+    }
 
-        // OPTIMIZATION 3: Don't schedule next frame if page is hidden
-        if (!this.isPageVisible) {
-            return;
-        }
-
-        // Request next frame immediately to keep loop alive
-        this.animationFrameId = requestAnimationFrame((t) => this.render(t));
-
-        // FPS throttling: Calculate time elapsed since last frame
-        if (!currentTime) currentTime = performance.now();
-        const elapsed = currentTime - this.lastFrameTime;
-
-        // Only render if enough time has passed (e.g., 33.3ms for 30fps)
-        if (elapsed < this.frameInterval) {
-            return; // Skip this frame
-        }
-
-        // Adjust for latency drift
-        this.lastFrameTime = currentTime - (elapsed % this.frameInterval);
-
-        // Update time only if playing
-        const isPlaying = this.playback.audio && !this.playback.audio.paused;
-        if (isPlaying) {
-            this.time += this.frameInterval / 1000; // Time increment based on target FPS
-        }
-
-        // Get audio data (zero-allocation)
-        const frame = this.getFrameData();
-
-        // Clear canvas with fade
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        this.ctx.fillRect(0, 0, this.width, this.height);
-
-        // Draw active pattern
-        const drawFn = this.patterns[this.activePattern];
-        if (drawFn) {
-            drawFn(this.ctx, this.width, this.height, frame, this.noise);
-        }
+    /**
+     * Get pattern metadata
+     */
+    getPatternMetadata(patternName) {
+        return this.patterns[patternName] || null;
     }
 
     /**
      * Handle window resize
      */
     handleResize() {
-        this.setupCanvas();
+        if (this.visualizerEngine) {
+            this.visualizerEngine.handleResize();
+        }
+    }
+
+    /**
+     * Setup audio analyser (called when audio element changes)
+     */
+    setupAudioAnalyser() {
+        if (this.audioEngine) {
+            this.audioEngine.setAudioElement(this.playback.audio);
+            this.audioEngine.init();
+        }
+
+        if (this.visualizerEngine) {
+            this.visualizerEngine.setAudioElement(this.playback.audio);
+        }
+
+        console.log('[VisualizerService] 🔊 Audio analyser setup complete');
     }
 }
 

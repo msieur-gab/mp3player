@@ -1,4 +1,4 @@
-const CACHE_NAME = 'music-pwa-v6';
+const CACHE_NAME = 'music-pwa-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -13,7 +13,14 @@ const ASSETS = [
   './js/services/ThemeService.js',
   './js/services/VisualizerService.js',
   './js/visualizer/utils.js',
-  './js/visualizer/patterns.js',
+  './js/visualizer/AudioEngine.js',
+  './js/visualizer/VisualizerEngine.js',
+  './js/visualizer/patterns/index.js',
+  './js/visualizer/patterns/needles.js',
+  './js/visualizer/patterns/breath.js',
+  './js/visualizer/patterns/horizon.js',
+  './js/visualizer/patterns/grid.js',
+  './js/visualizer/patterns/mosaic.js',
   './js/components/AppHeader.js',
   './js/components/PlayerControls.js',
   './js/components/AlbumGrid.js',
