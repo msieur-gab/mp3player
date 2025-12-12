@@ -188,6 +188,12 @@ class VisualizerService {
                 this.visualizerEngine.clearCanvas();
             }
 
+            // Render immediately for instant visual feedback (don't wait for next frame at 1 FPS)
+            if (this.visualizerEngine && this.visualizerEngine.enabled) {
+                const isPlaying = this.playback.audio && !this.playback.audio.paused;
+                this.renderFrame(isPlaying);
+            }
+
             console.log(`[VisualizerService] 🎭 Pattern changed to: ${patternName}`);
         } else {
             console.warn(`[VisualizerService] ⚠️ Pattern not found: ${patternName}`);

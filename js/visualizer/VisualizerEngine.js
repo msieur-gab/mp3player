@@ -207,17 +207,8 @@ class VisualizerEngine {
 
         this.frameCount++;
 
-        // Performance logging every 3 seconds
+        // Reset counters every 3 seconds
         if (currentTime - this.lastDebugLog > 3000) {
-            const actualFps = this.frameCount / ((currentTime - this.lastDebugLog) / 1000);
-            console.log('[VisualizerEngine] 📊 Performance:', {
-                framesRendered: this.frameCount,
-                framesSkipped: this.skippedFrames,
-                actualFps: actualFps.toFixed(1),
-                targetFps: this.currentTargetFps,
-                mode: isPlaying ? 'PLAYING' : 'IDLE',
-                isPlaying
-            });
             this.frameCount = 0;
             this.skippedFrames = 0;
             this.lastDebugLog = currentTime;
