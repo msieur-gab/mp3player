@@ -55,7 +55,7 @@ class VisualizerService {
 
         // OPTIMIZATION 4: Adaptive Quality - Detect mobile device
         this.isMobile = window.innerWidth < 600;
-        this.qualityMultiplier = this.isMobile ? 0.5 : 1.0; // 50% reduction on mobile
+        this.qualityMultiplier = this.isMobile ? 0.85 : 1.0; // 28% reduction on mobile (maintains visual richness)
 
         // OPTIMIZATION 3: Page Visibility API - Stop rendering when tab hidden
         this.isPageVisible = !document.hidden;
