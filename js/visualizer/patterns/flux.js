@@ -20,44 +20,55 @@
  * @param {object} noise - Noise generator instance
  */
 export function drawFlux(ctx, width, height, frame, noise) {
-    const numLines = 60; // Dense field of lines
+    const numLines = 50; // Dense field of lines
     const { spectrum, energy, beatPulse, isPlaying } = frame;
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Base angle for parallel lines (diagonal)
-    const baseAngle = Math.PI / 6; // 30 degrees
-
     // Very gentle flow
     const flowSpeed = isPlaying ? energy.mid * 0.2 : 0;
 
-    for (let i = 0; i < numLines; i++) {
-        const t = i / numLines;
+    // Draw diagonal lines from top-left to bottom-right
+    const spacing = 15; // Space between parallel lines
+    const totalLines = Math.ceil((width + height) / spacing);
 
-        // Lines are evenly spaced diagonally across canvas
-        const spacing = (width + height) / numLines;
-        const startOffset = i * spacing;
+    for (let i = 0; i < totalLines; i++) {
+        const t = i / totalLines;
 
         ctx.beginPath();
 
-        // Draw line from one edge to another
-        const lineLength = Math.hypot(width, height) * 1.5;
-        const numPoints = 100;
+        // Each line starts from either top or left edge
+        let startX, startY, endX, endY;
 
-        for (let p = 0; p <= numPoints; p++) {
-            const progress = p / numPoints;
-            const dist = progress * lineLength;
+        if (i * spacing < width) {
+            // Start from top edge
+            startX = i * spacing;
+            startY = 0;
+            endX = 0;
+            endY = i * spacing;
+        } else {
+            // Start from right edge
+            startX = width;
+            startY = (i * spacing) - width;
+            endX = width - ((i * spacing) - width);
+            endY = height;
+        }
 
-            // Base position along diagonal
-            let x = -height + startOffset + Math.cos(baseAngle) * dist;
-            let y = Math.sin(baseAngle) * dist;
+        // Draw curved line from start to end
+        const numSegments = 50;
+
+        for (let s = 0; s <= numSegments; s++) {
+            const progress = s / numSegments;
+
+            // Interpolate between start and end
+            const baseX = startX + (endX - startX) * progress;
+            const baseY = startY + (endY - startY) * progress;
 
             // Create traveling waves using spectrum
             let waveOffset = 0;
-
-            // 2-3 gentle waves traveling through the field
             const numWaves = 2;
+
             for (let w = 0; w < numWaves; w++) {
                 const freqIndex = Math.floor(w * 12);
                 const freqVal = spectrum[freqIndex] || 0;
@@ -78,25 +89,20 @@ export function drawFlux(ctx, width, height, frame, noise) {
             );
 
             // Combine influences - very subtle
-            const amp = isPlaying ? 12 + energy.bass * 18 : 8;
+            const amp = isPlaying ? 10 + energy.bass * 15 : 6;
             const totalOffset = (noiseVal * 0.5 + waveOffset * 0.5 + beatPulse * 0.2) * amp;
 
-            // Apply offset perpendicular to line direction
-            const perpAngle = baseAngle + Math.PI / 2;
-            x += Math.cos(perpAngle) * totalOffset;
-            y += Math.sin(perpAngle) * totalOffset;
+            // Offset perpendicular to line (diagonal)
+            const perpX = -totalOffset * 0.707; // cos(45°)
+            const perpY = totalOffset * 0.707;  // sin(45°)
 
-            // Clip to canvas bounds
-            if (x < -100 || x > width + 100 || y < -100 || y > height + 100) {
-                continue;
-            }
+            const x = baseX + perpX;
+            const y = baseY + perpY;
 
-            if (p === 0 || (x >= 0 && x <= width && y >= 0 && y <= height)) {
-                if (ctx.currentPath === undefined || p === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
+            if (s === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
             }
         }
 
@@ -107,9 +113,9 @@ export function drawFlux(ctx, width, height, frame, noise) {
         } else {
             // Very subtle opacity variation
             const centerDist = Math.abs(t - 0.5) * 2; // 0 at center, 1 at edges
-            const alpha = 0.15 + (0.25 * (1 - centerDist)) + (energy.bass * 0.15);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(0.6, alpha)})`;
-            ctx.lineWidth = 0.5 + (energy.bass * 0.4);
+            const alpha = 0.2 + (0.3 * (1 - centerDist)) + (energy.bass * 0.15);
+            ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(0.7, alpha)})`;
+            ctx.lineWidth = 0.6 + (energy.bass * 0.4);
         }
 
         ctx.stroke();
