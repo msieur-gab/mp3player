@@ -180,6 +180,9 @@ class TrackList extends HTMLElement {
                     <button class="pattern-btn" data-pattern="horizon">HORIZON</button>
                     <button class="pattern-btn" data-pattern="grid">LINES</button>
                     <button class="pattern-btn" data-pattern="mosaic">MOSAIC</button>
+                    <button class="pattern-btn" data-pattern="terrain">TERRAIN</button>
+                    <button class="pattern-btn" data-pattern="bands">BANDS</button>
+                    <button class="pattern-btn" data-pattern="ridge">RIDGE</button>
                 </div>
             </div>
             <div class="album-header-info">

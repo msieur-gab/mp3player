@@ -23,6 +23,9 @@ import { drawBreath, metadata as breathMetadata } from './breath.js';
 import { drawHorizon, metadata as horizonMetadata } from './horizon.js';
 import { drawGrid, metadata as gridMetadata } from './grid.js';
 import { drawMosaic, metadata as mosaicMetadata } from './mosaic.js';
+import { drawTerrain, metadata as terrainMetadata } from './terrain.js';
+import { drawBands, metadata as bandsMetadata } from './bands.js';
+import { drawRidge, metadata as ridgeMetadata } from './ridge.js';
 
 /**
  * Pattern registry with metadata
@@ -48,6 +51,18 @@ export const PATTERNS = {
     mosaic: {
         draw: drawMosaic,
         ...mosaicMetadata
+    },
+    terrain: {
+        draw: drawTerrain,
+        ...terrainMetadata
+    },
+    bands: {
+        draw: drawBands,
+        ...bandsMetadata
+    },
+    ridge: {
+        draw: drawRidge,
+        ...ridgeMetadata
     }
 };
 
@@ -74,4 +89,4 @@ export function getPatternDrawFunction(patternName) {
 }
 
 // Backward compatibility: Export draw functions directly
-export { drawNeedles, drawBreath, drawHorizon, drawGrid, drawMosaic };
+export { drawNeedles, drawBreath, drawHorizon, drawGrid, drawMosaic, drawTerrain, drawBands, drawRidge };
