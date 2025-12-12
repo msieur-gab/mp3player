@@ -36,6 +36,10 @@ class MusicPlayerApp {
 
         // Components
         this.components = {};
+
+        // Memory leak fix: Track event unsubscribers
+        this.eventUnsubscribers = [];
+        this.boundHandleResize = this.handleResize.bind(this);
     }
 
     /**
@@ -89,39 +93,57 @@ class MusicPlayerApp {
 
     /**
      * Setup all event listeners
+     * Memory leak fix: Track all subscriptions for cleanup
      */
     setupEventListeners() {
         // Navigation events
-        EventBus.on('navigation:back', () => this.switchView('ALBUMS'));
-        EventBus.on('album:selected', (albumName) => this.switchView('TRACKS', albumName, false));
-        EventBus.on('track:selected', (trackId) => this.playTrack(trackId));
+        this.eventUnsubscribers.push(
+            EventBus.on('navigation:back', () => this.switchView('ALBUMS')),
+            EventBus.on('album:selected', (albumName) => this.switchView('TRACKS', albumName, false)),
+            EventBus.on('track:selected', (trackId) => this.playTrack(trackId))
+        );
 
         // Theme events
-        EventBus.on('theme:toggle', () => this.theme.toggleTheme());
+        this.eventUnsubscribers.push(
+            EventBus.on('theme:toggle', () => this.theme.toggleTheme())
+        );
 
         // Scan events
-        EventBus.on('scan:request', () => this.handleScan());
+        this.eventUnsubscribers.push(
+            EventBus.on('scan:request', () => this.handleScan())
+        );
 
         // Playback events
-        EventBus.on('playback:togglePlayPause', () => this.playback.togglePlayPause());
-        EventBus.on('playback:previous', () => this.playback.playPrev());
-        EventBus.on('playback:next', () => this.playback.playNext());
-        EventBus.on('playback:seek', (percent) => this.playback.seek(percent));
+        this.eventUnsubscribers.push(
+            EventBus.on('playback:togglePlayPause', () => this.playback.togglePlayPause()),
+            EventBus.on('playback:previous', () => this.playback.playPrev()),
+            EventBus.on('playback:next', () => this.playback.playNext()),
+            EventBus.on('playback:seek', (percent) => this.playback.seek(percent))
+        );
 
         // Library events
-        EventBus.on('scan:completed', async () => {
-            await this.loadLibrary();
-        });
+        this.eventUnsubscribers.push(
+            EventBus.on('scan:completed', async () => {
+                await this.loadLibrary();
+            })
+        );
 
         // Permission events
-        EventBus.on('permission:needed', () => this.showPermissionBanner());
+        this.eventUnsubscribers.push(
+            EventBus.on('permission:needed', () => this.showPermissionBanner())
+        );
 
-        // Window resize - update visualizer canvas
-        window.addEventListener('resize', () => {
-            if (this.visualizer) {
-                this.visualizer.handleResize();
-            }
-        });
+        // Memory leak fix: Use bound handler for window resize
+        window.addEventListener('resize', this.boundHandleResize);
+    }
+
+    /**
+     * Handle window resize
+     */
+    handleResize() {
+        if (this.visualizer) {
+            this.visualizer.handleResize();
+        }
     }
 
     /**
@@ -350,6 +372,28 @@ class MusicPlayerApp {
         } catch (error) {
             console.error('[App] Error requesting permission:', error);
         }
+    }
+
+    /**
+     * Cleanup application resources
+     * Memory leak fix: Unsubscribe from all events
+     */
+    destroy() {
+        console.log('[App] 🗑️ Destroying application');
+
+        // Unsubscribe from EventBus
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        // Remove window listener
+        window.removeEventListener('resize', this.boundHandleResize);
+
+        // Cleanup services
+        if (this.visualizer) {
+            this.visualizer.destroy();
+        }
+
+        console.log('[App] 🧹 Cleanup complete');
     }
 }
 
