@@ -11,6 +11,14 @@ class PlaybackService {
         this.currentTrack = null;
         this.playbackQueue = [];
         this.playbackIndex = -1;
+
+        // Memory leak fix: Track object URLs for cleanup
+        this.currentAudioUrl = null;
+        this.currentArtworkUrl = null;
+
+        // Race condition fix: Track playback requests
+        this.playbackRequestId = 0;
+        this.currentRequestId = 0;
     }
 
     /**
@@ -92,6 +100,12 @@ class PlaybackService {
      * @param {Array} queue - Optional playback queue
      */
     async playTrack(track, queue = null) {
+        // Race condition fix: Generate unique request ID
+        const requestId = ++this.playbackRequestId;
+        this.currentRequestId = requestId;
+
+        let objectUrl = null;
+
         try {
             // Update queue if provided
             if (queue) {
@@ -103,8 +117,29 @@ class PlaybackService {
 
             // Get file and create object URL
             const file = await track.handle.getFile();
-            this.audio.src = URL.createObjectURL(file);
+
+            // Race condition fix: Check if still the active request
+            if (this.currentRequestId !== requestId) {
+                console.log('[PlaybackService] Request superseded, aborting');
+                return;
+            }
+
+            // Memory leak fix: Revoke old audio URL before creating new one
+            if (this.currentAudioUrl) {
+                URL.revokeObjectURL(this.currentAudioUrl);
+            }
+
+            objectUrl = URL.createObjectURL(file);
+            this.currentAudioUrl = objectUrl;
+            this.audio.src = objectUrl;
+
             await this.audio.play();
+
+            // Race condition fix: Check again after async operation
+            if (this.currentRequestId !== requestId) {
+                console.log('[PlaybackService] Request superseded after play, aborting');
+                return;
+            }
 
             // Emit track started event
             EventBus.emit('track:started', track);
@@ -113,9 +148,17 @@ class PlaybackService {
             await this.db.incrementPlayCount(track);
 
             // Extract and update metadata in background
-            this.updateTrackMetadata(track, file);
+            this.updateTrackMetadata(track, file).catch(error => {
+                console.error('[PlaybackService] Metadata update failed:', error);
+            });
 
         } catch (error) {
+            // Error cleanup: Revoke object URL if created
+            if (objectUrl && this.currentRequestId === requestId) {
+                URL.revokeObjectURL(objectUrl);
+                this.currentAudioUrl = null;
+            }
+
             console.error('[PlaybackService] Error playing track:', error);
             EventBus.emit('playback:error', error);
 
@@ -151,6 +194,12 @@ class PlaybackService {
             }
 
             if (coverUrl) {
+                // Memory leak fix: Revoke old artwork URL before setting new one
+                if (this.currentArtworkUrl) {
+                    URL.revokeObjectURL(this.currentArtworkUrl);
+                }
+                this.currentArtworkUrl = coverUrl;
+
                 navigator.mediaSession.metadata = new MediaMetadata({
                     title: tags.title || track.title,
                     artist: tags.artist || track.artist,
