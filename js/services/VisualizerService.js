@@ -157,10 +157,8 @@ class VisualizerService {
             isPlaying
         };
 
-        // Only apply fade when playing (keeps pattern visible when paused)
-        if (isPlaying) {
-            this.visualizerEngine.clearWithFade(0.2);
-        }
+        // Clear canvas with fade effect
+        this.visualizerEngine.clearWithFade(0.2);
 
         // Render active pattern
         const pattern = this.patterns[this.activePattern];
