@@ -293,6 +293,23 @@ class VisualizerEngine {
         this.targetFpsIdle = fpsIdle;
         console.log(`[VisualizerEngine] 🎯 Target FPS set: ${fpsPlaying} (playing) / ${fpsIdle} (idle)`);
     }
+
+    /**
+     * Destroy visualizer engine and cleanup resources
+     */
+    destroy() {
+        console.log('[VisualizerEngine] 🗑️ Destroying visualizer engine');
+
+        // Stop animation loop
+        this.disable();
+
+        // Clear canvas
+        this.clearCanvas();
+
+        // Nullify references
+        this.canvas = null;
+        this.ctx = null;
+    }
 }
 
 export default VisualizerEngine;

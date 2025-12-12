@@ -33,6 +33,10 @@ class VisualizerService {
         this.activePattern = 'needles';
         this.patterns = PATTERNS;
 
+        // Lifecycle state
+        this.initialized = false;
+        this.eventUnsubscribers = [];
+
         console.log('[VisualizerService] 🎬 Initialized', {
             availablePatterns: getPatternNames()
         });
@@ -42,33 +46,45 @@ class VisualizerService {
      * Initialize with canvas element
      */
     init(canvasElement) {
-        // Initialize engines
-        this.audioEngine = new AudioEngine(this.playback.audio);
-        this.visualizerEngine = new VisualizerEngine(canvasElement, this.playback.audio);
+        if (!this.initialized) {
+            // First-time initialization only
+            this.audioEngine = new AudioEngine(this.playback.audio);
+            this.visualizerEngine = new VisualizerEngine(canvasElement, this.playback.audio);
 
-        // Setup engines
-        this.audioEngine.init();
-        this.visualizerEngine.init();
+            // Setup engines
+            this.audioEngine.init();
+            this.visualizerEngine.init();
 
-        // Setup playback listeners
-        this.setupPlaybackListeners();
+            // Setup playback listeners (one-time)
+            this.setupPlaybackListeners();
 
-        console.log('[VisualizerService] ✅ Initialization complete');
+            this.initialized = true;
+            console.log('[VisualizerService] ✅ First initialization complete');
+        } else {
+            // Subsequent calls: just update canvas reference
+            console.log('[VisualizerService] 🔄 Updating canvas reference');
+            this.visualizerEngine.setCanvas(canvasElement);
+            this.visualizerEngine.init(); // Re-setup canvas with new element
+        }
     }
 
     /**
      * Setup playback event listeners
      */
     setupPlaybackListeners() {
-        EventBus.on('playback:play', () => {
+        // Store unsubscribe functions to prevent accumulation
+        const unsubPlay = EventBus.on('playback:play', () => {
             console.log('[VisualizerService] ▶️ Play event received');
             this.enable();
         });
 
-        EventBus.on('playback:pause', () => {
+        const unsubPause = EventBus.on('playback:pause', () => {
             console.log('[VisualizerService] ⏸️ Pause event received');
             this.disable();
         });
+
+        this.eventUnsubscribers.push(unsubPlay, unsubPause);
+        console.log('[VisualizerService] 📡 Event listeners registered (one-time)');
     }
 
     /**
@@ -207,6 +223,31 @@ class VisualizerService {
         }
 
         console.log('[VisualizerService] 🔊 Audio analyser setup complete');
+    }
+
+    /**
+     * Destroy visualizer service and cleanup resources
+     */
+    destroy() {
+        console.log('[VisualizerService] 🗑️ Destroying visualizer service');
+
+        // Unsubscribe from all events
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        // Destroy engines
+        if (this.audioEngine) {
+            this.audioEngine.destroy();
+            this.audioEngine = null;
+        }
+
+        if (this.visualizerEngine) {
+            this.visualizerEngine.disable();
+            this.visualizerEngine.clearCanvas();
+            this.visualizerEngine = null;
+        }
+
+        this.initialized = false;
     }
 }
 

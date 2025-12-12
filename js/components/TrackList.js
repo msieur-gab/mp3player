@@ -108,7 +108,12 @@ class TrackList extends HTMLElement {
         if (this.visualizerService) {
             const canvas = this.albumHeader.querySelector('#visualizer-canvas');
             this.visualizerService.init(canvas);
-            this.visualizerService.enable();
+
+            // Enable if audio is already playing
+            const audio = this.visualizerService.playback.audio;
+            if (audio && !audio.paused) {
+                this.visualizerService.enable();
+            }
         }
 
         // Setup pattern switcher
@@ -186,6 +191,12 @@ class TrackList extends HTMLElement {
      */
     hide() {
         this.classList.add('hidden');
+
+        // Disable visualizer to save battery when view is hidden
+        if (this.visualizerService) {
+            this.visualizerService.disable();
+            console.log('[TrackList] 🛑 Visualizer disabled on hide');
+        }
     }
 }
 
