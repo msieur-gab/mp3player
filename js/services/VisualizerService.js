@@ -46,26 +46,27 @@ class VisualizerService {
      * Initialize with canvas element
      */
     init(canvasElement) {
-        if (!this.initialized) {
-            // First-time initialization only
-            this.audioEngine = new AudioEngine(this.playback.audio);
-            this.visualizerEngine = new VisualizerEngine(canvasElement, this.playback.audio);
-
-            // Setup engines
-            this.audioEngine.init();
-            this.visualizerEngine.init();
-
-            // Setup playback listeners (one-time)
-            this.setupPlaybackListeners();
-
-            this.initialized = true;
-            console.log('[VisualizerService] ✅ First initialization complete');
-        } else {
-            // Subsequent calls: just update canvas reference
-            console.log('[VisualizerService] 🔄 Updating canvas reference');
-            this.visualizerEngine.setCanvas(canvasElement);
-            this.visualizerEngine.init(); // Re-setup canvas with new element
+        // Clean up old engines if they exist
+        if (this.visualizerEngine) {
+            this.visualizerEngine.disable();
         }
+
+        // Initialize engines (reuse AudioEngine, recreate VisualizerEngine)
+        if (!this.audioEngine) {
+            this.audioEngine = new AudioEngine(this.playback.audio);
+            this.audioEngine.init();
+        }
+
+        this.visualizerEngine = new VisualizerEngine(canvasElement, this.playback.audio);
+        this.visualizerEngine.init();
+
+        // Setup playback listeners only once
+        if (!this.initialized) {
+            this.setupPlaybackListeners();
+            this.initialized = true;
+        }
+
+        console.log('[VisualizerService] ✅ Initialization complete');
     }
 
     /**
@@ -80,7 +81,8 @@ class VisualizerService {
 
         const unsubPause = EventBus.on('playback:pause', () => {
             console.log('[VisualizerService] ⏸️ Pause event received');
-            this.disable();
+            // Don't disable - let adaptive FPS handle it (switches to 1 FPS automatically)
+            // This allows pattern switching to work when paused
         });
 
         this.eventUnsubscribers.push(unsubPlay, unsubPause);
@@ -180,6 +182,12 @@ class VisualizerService {
     setPattern(patternName) {
         if (this.patterns[patternName]) {
             this.activePattern = patternName;
+
+            // Clear canvas to prevent overlap when switching at 1 FPS (idle/paused)
+            if (this.visualizerEngine) {
+                this.visualizerEngine.clearCanvas();
+            }
+
             console.log(`[VisualizerService] 🎭 Pattern changed to: ${patternName}`);
         } else {
             console.warn(`[VisualizerService] ⚠️ Pattern not found: ${patternName}`);
