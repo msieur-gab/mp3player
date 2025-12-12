@@ -1,13 +1,17 @@
 /**
- * Visualizer Patterns - 30fps optimized
+ * Visualizer Patterns - 30fps optimized with adaptive quality
  * Each pattern is a pure function that draws to canvas
+ * OPTIMIZATION 4: Patterns adapt grid density based on device capability
  */
 
 /**
  * NEEDLES - Grid of dots that shoot lines outward
  */
 export function drawNeedles(ctx, width, height, frame, noise) {
-    const gridStep = 30;
+    // OPTIMIZATION 4: Reduce grid density on mobile (30 -> 60 spacing = 75% fewer entities)
+    const baseGridStep = 30;
+    const gridStep = baseGridStep / (frame.qualityMultiplier || 1);
+
     const centerX = width / 2;
     const centerY = height / 2;
     const maxDist = Math.hypot(centerX, centerY);
@@ -75,7 +79,9 @@ export function drawNeedles(ctx, width, height, frame, noise) {
  * BREATH - Grid of rotating dashes
  */
 export function drawBreath(ctx, width, height, frame, noise) {
-    const gridSpacing = 25;
+    // OPTIMIZATION 4: Reduce grid density on mobile
+    const baseGridSpacing = 25;
+    const gridSpacing = baseGridSpacing / (frame.qualityMultiplier || 1);
     const dashLength = 15;
     const { spectrum, energy, beatPulse, isPlaying } = frame;
     ctx.lineCap = 'round';
@@ -126,7 +132,9 @@ export function drawBreath(ctx, width, height, frame, noise) {
  * HORIZON - Horizontal wavy strings
  */
 export function drawHorizon(ctx, width, height, frame, noise) {
-    const numLines = 24;
+    // OPTIMIZATION 4: Reduce line count on mobile (24 -> 12 lines)
+    const baseNumLines = 24;
+    const numLines = Math.floor(baseNumLines * (frame.qualityMultiplier || 1));
     const { spectrum, beatPulse, isPlaying } = frame;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -168,10 +176,13 @@ export function drawHorizon(ctx, width, height, frame, noise) {
  * GRID - Rotating crosses
  */
 export function drawGrid(ctx, width, height, frame, noise) {
-    const gridStep = 25;
+    // OPTIMIZATION 4: Reduce grid density on mobile
+    const baseGridStep = 25;
+    const gridStep = baseGridStep / (frame.qualityMultiplier || 1);
     const { spectrum, energy, isPlaying } = frame;
     ctx.lineCap = 'round';
 
+    // OPTIMIZATION 5: Cache state settings to avoid redundant calls
     for (let y = gridStep/2; y < height; y += gridStep) {
         const t = y / height;
 
@@ -181,12 +192,16 @@ export function drawGrid(ctx, width, height, frame, noise) {
             const bassVal = spectrum[Math.floor((x/width)*20)] || 0;
             const trebleVal = spectrum[Math.floor(spectrum.length - 20 + (x/width)*20)] || 0;
 
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.rotate(angle);
-
             const lenTop = 5 + (t * 4) + (bassVal * 20);
             const lenBot = 5 + (t * 4) + (trebleVal * 15);
+
+            // Calculate line endpoints with rotation (avoiding save/restore)
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            const x1 = x + (0 * cosA - (-lenTop) * sinA);
+            const y1 = y + (0 * sinA + (-lenTop) * cosA);
+            const x2 = x + (0 * cosA - lenBot * sinA);
+            const y2 = y + (0 * sinA + lenBot * cosA);
 
             if (!isPlaying) {
                 ctx.lineWidth = 1.5;
@@ -198,10 +213,9 @@ export function drawGrid(ctx, width, height, frame, noise) {
             }
 
             ctx.beginPath();
-            ctx.moveTo(0, -lenTop);
-            ctx.lineTo(0, lenBot);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
             ctx.stroke();
-            ctx.restore();
         }
     }
 }
@@ -210,7 +224,9 @@ export function drawGrid(ctx, width, height, frame, noise) {
  * MOSAIC - Kinetic halftone dots
  */
 export function drawMosaic(ctx, width, height, frame, noise) {
-    const gridSize = 16;
+    // OPTIMIZATION 4: Reduce grid density on mobile (16 -> 32 size = 75% fewer cells)
+    const baseGridSize = 16;
+    const gridSize = baseGridSize / (frame.qualityMultiplier || 1);
     const cols = Math.ceil(width / gridSize);
     const rows = Math.ceil(height / gridSize);
     const { spectrum, beatPulse, isPlaying } = frame;
