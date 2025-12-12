@@ -123,6 +123,10 @@ class MusicPlayerApp {
 
         // Library events
         this.eventUnsubscribers.push(
+            EventBus.on('scan:albumFound', async (albumData) => {
+                // Progressive update: reload library as albums are found
+                await this.loadLibrary();
+            }),
             EventBus.on('scan:completed', async () => {
                 await this.loadLibrary();
             })

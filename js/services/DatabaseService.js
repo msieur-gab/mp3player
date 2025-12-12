@@ -65,6 +65,20 @@ class DatabaseService {
                 console.log('[DatabaseService] Upgraded to v5: Added covers table');
             });
 
+        // Schema v6 - Add scanSessionId for progressive scanning
+        this.db.version(6)
+            .stores({
+                tracks: '++id, title, artist, path, album, trackNumber, genre, year, duration, scanSessionId',
+                playCount: '++id, &trackKey, playCount, lastPlayed',
+                covers: '++id, &albumKey, coverData'
+            })
+            .upgrade(tx => {
+                console.log('[DatabaseService] Upgraded to v6: Added scanSessionId for non-destructive scanning');
+                return tx.table("tracks").toCollection().modify(track => {
+                    if (!track.scanSessionId) track.scanSessionId = null;
+                });
+            });
+
         await this.db.open();
         console.log('[DatabaseService] Initialized');
     }
@@ -89,6 +103,20 @@ class DatabaseService {
      */
     async clearTracks() {
         await this.db.tracks.where('id').notEqual('root_handle').delete();
+    }
+
+    /**
+     * Remove tracks not in current scan session
+     * @param {number} scanSessionId - Current scan session timestamp
+     */
+    async removeTracksNotInScan(scanSessionId) {
+        const deleted = await this.db.tracks
+            .where('id').notEqual('root_handle')
+            .and(track => track.scanSessionId !== scanSessionId)
+            .delete();
+
+        console.log(`[DatabaseService] Removed ${deleted} tracks from previous scans`);
+        return deleted;
     }
 
     /**

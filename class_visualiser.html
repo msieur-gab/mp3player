@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monochrome Music Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            background: #000;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .player-container {
+            width: 100%;
+            max-width: 28rem;
+            background: #050505;
+            border: 1px solid #1a1a1a;
+            border-radius: 2.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #666;
+            font-size: 0.625rem;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+        }
+
+        .header button {
+            background: none;
+            border: none;
+            color: inherit;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .header button:hover {
+            color: white;
+        }
+
+        .visualizer-container {
+            position: relative;
+            aspect-ratio: 1;
+            background: #000;
+            border-radius: 1.5rem;
+            overflow: hidden;
+            box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.8);
+            border: 1px solid #1a1a1a;
+        }
+
+        .visualizer-container:hover .pattern-switcher {
+            opacity: 1;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* CHANGED: Hidden by default to show matrix at all times */
+        .standby-overlay {
+            display: none; 
+            position: absolute;
+            inset: 0;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            pointer-events: none;
+        }
+
+        .pattern-switcher {
+            position: absolute;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 0.5rem;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(12px);
+            padding: 0.3rem 0.6rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            opacity: 0;
+            transition: opacity 0.3s;
+            max-width: 90%;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        
+        .pattern-switcher::-webkit-scrollbar {
+            display: none;
+        }
+
+        .pattern-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.4);
+            cursor: pointer;
+            padding: 0.5rem 0.6rem;
+            transition: all 0.3s;
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .pattern-btn:hover {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .pattern-btn.active {
+            color: white;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .track-info {
+            text-align: center;
+            padding: 0 1rem;
+        }
+
+        .track-title {
+            font-size: 1.25rem;
+            font-weight: 500;
+            color: #e2e8f0;
+            letter-spacing: 0.025em;
+            margin-bottom: 0.25rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .track-subtitle {
+            color: #666;
+            font-size: 0.75rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            padding: 0.5rem;
+        }
+
+        .control-btn {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            padding: 0.5rem;
+            transition: color 0.3s;
+        }
+
+        .control-btn:hover {
+            color: white;
+        }
+
+        .play-btn {
+            width: 4rem;
+            height: 4rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            color: black;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+
+        .play-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .icon {
+            width: 1.125rem;
+            height: 1.125rem;
+        }
+
+        .icon-lg {
+            width: 1.75rem;
+            height: 1.75rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <div class="header">
+            <button>
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                </svg>
+            </button>
+            <span>Mono</span>
+            <button id="uploadBtn">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+            </button>
+            <input type="file" id="fileInput" class="file-input" accept="audio/*">
+        </div>
+
+        <div class="visualizer-container">
+            <canvas id="visualizer"></canvas>
+            <div id="standby" class="standby-overlay"></div>
+
+            <div class="pattern-switcher">
+                <button class="pattern-btn active" data-pattern="needles">NEEDLES</button>
+                <button class="pattern-btn" data-pattern="breath">BREATH</button>
+                <button class="pattern-btn" data-pattern="horizon">HORIZON</button>
+                <button class="pattern-btn" data-pattern="grid">LINES</button>
+                <button class="pattern-btn" data-pattern="mosaic">MOSAIC</button>
+            </div>
+        </div>
+
+        <div class="track-info">
+            <div class="track-title" id="trackTitle">Monochrome Viz</div>
+            <div class="track-subtitle" id="trackSubtitle">Graphical Series</div>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn" id="prevBtn">
+                <svg class="icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4z"></path>
+                </svg>
+            </button>
+
+            <button class="play-btn" id="playBtn">
+                <svg class="icon-lg" id="playIcon" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+            </button>
+
+            <button class="control-btn" id="nextBtn">
+                <svg class="icon-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4z"></path>
+                </svg>
+            </button>
+        </div>
+
+        <audio id="audio" crossorigin="anonymous"></audio>
+    </div>
+
+    <script>
+        /**
+         * ==========================================
+         * UTILITY: NOISE
+         * ==========================================
+         */
+        class Noise {
+            constructor(seed = 1) { this.seed = seed; }
+            noise2D(x, y) {
+                const n = Math.sin(x * 12.9898 + y * 78.233 + this.seed) * 43758.5453;
+                return n - Math.floor(n);
+            }
+            perlin(x, y) {
+                const xi = Math.floor(x); const yi = Math.floor(y);
+                const xf = x - xi; const yf = y - yi;
+                const a = this.noise2D(xi, yi); const b = this.noise2D(xi + 1, yi);
+                const c = this.noise2D(xi, yi + 1); const d = this.noise2D(xi + 1, yi + 1);
+                const u = xf * xf * (3 - 2 * xf); const v = yf * yf * (3 - 2 * yf);
+                return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+            }
+        }
+
+        /**
+         * ==========================================
+         * UTILITY: AUDIO ENGINE
+         * ==========================================
+         */
+        class AudioEngine {
+            constructor(audioElement) {
+                this.audioElement = audioElement;
+                this.audioContext = null;
+                this.analyser = null;
+                this.source = null;
+                
+                // CHANGED: Default isSimulating to false so it starts Static
+                this.isSimulating = false; 
+                
+                // Beat Detection State
+                this.beatThreshold = 0.55; 
+                this.beatDecay = 0.95; 
+                this.currentPulse = 0;
+            }
+
+            init() {
+                if (this.audioContext) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.audioContext = new AudioContext();
+                this.analyser = this.audioContext.createAnalyser();
+                this.analyser.fftSize = 512;
+                this.analyser.smoothingTimeConstant = 0.8;
+
+                try {
+                    this.source = this.audioContext.createMediaElementSource(this.audioElement);
+                    this.source.connect(this.analyser);
+                    this.analyser.connect(this.audioContext.destination);
+                } catch (e) {
+                    console.warn("Audio Context Error:", e);
+                }
+            }
+
+            resume() {
+                if (this.audioContext && this.audioContext.state === 'suspended') {
+                    this.audioContext.resume();
+                }
+            }
+
+            getFrameData(time) {
+                const binCount = this.analyser ? this.analyser.frequencyBinCount : 128;
+                const rawData = new Uint8Array(binCount);
+                const spectrum = new Float32Array(binCount); 
+
+                if (this.isSimulating) {
+                    for (let i = 0; i < binCount; i++) {
+                        const n = i / binCount;
+                        const bass = Math.pow(Math.sin(time * 3), 4) * (1 - n);
+                        const mid = Math.sin(time * 2 + i * 0.1) * 0.5 + 0.5;
+                        spectrum[i] = (bass * 0.8 + mid * 0.2); 
+                    }
+                } else if (this.analyser) {
+                    this.analyser.getByteFrequencyData(rawData);
+                    for (let i = 0; i < binCount; i++) {
+                        spectrum[i] = rawData[i] / 255;
+                    }
+                }
+
+                const getAvg = (start, end) => {
+                    let sum = 0;
+                    for(let i=start; i<end; i++) sum += spectrum[i] || 0;
+                    return sum / (end - start || 1);
+                }
+
+                const bass = getAvg(0, 8);
+                const mid = getAvg(8, 64);
+                const high = getAvg(64, 128);
+                const overall = getAvg(0, binCount);
+
+                if (bass > this.beatThreshold && this.currentPulse < 0.2) {
+                    this.currentPulse = 1.0;
+                } else {
+                    this.currentPulse *= this.beatDecay;
+                }
+
+                return {
+                    spectrum, 
+                    energy: { bass, mid, high, overall },
+                    beatPulse: this.currentPulse,
+                    time
+                };
+            }
+        }
+
+        /**
+         * ==========================================
+         * MAIN VISUALIZER CONTROLLER
+         * ==========================================
+         */
+        class OrganicVisualizer {
+            constructor(canvasId, audioId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.engine = new AudioEngine(document.getElementById(audioId));
+                
+                this.activePattern = 'needles'; // Changed default to new pattern
+                this.time = 0;
+                this.noise = new Noise();
+
+                this.setupCanvas();
+
+                this.patterns = {
+                    needles: this.drawNeedleGrid.bind(this),
+                    breath: this.drawBreathingForm.bind(this),
+                    horizon: this.drawHorizonStrings.bind(this),
+                    grid: this.drawDigitalGrid.bind(this),
+                    mosaic: this.drawKineticHalftone.bind(this)
+                };
+            }
+
+            setupCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = rect.width * dpr;
+                this.canvas.height = rect.height * dpr;
+                this.ctx.scale(dpr, dpr);
+                this.width = rect.width;
+                this.height = rect.height;
+            }
+
+            render() {
+                // CHANGED: Only increment time if music is actually playing or we are simulating
+                const isPlaying = (this.engine.audioElement && !this.engine.audioElement.paused) || this.engine.isSimulating;
+                
+                if (isPlaying) {
+                    this.time += 0.016;
+                }
+                
+                const frame = this.engine.getFrameData(this.time);
+                // Pass playing state to draw functions for dynamic thickness adjustments
+                frame.isPlaying = isPlaying;
+
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; 
+                this.ctx.fillRect(0, 0, this.width, this.height);
+
+                const drawFn = this.patterns[this.activePattern];
+                if (drawFn) {
+                    drawFn(this.ctx, this.width, this.height, frame);
+                }
+
+                requestAnimationFrame(() => this.render());
+            }
+
+            /**
+             * PATTERN 0: NEEDLES (New Request)
+             * Grid of dots that shoot lines outward
+             */
+            drawNeedleGrid(ctx, width, height, frame) {
+                const gridStep = 30;
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const maxDist = Math.hypot(centerX, centerY);
+                const { spectrum, energy, beatPulse, isPlaying } = frame;
+                
+                const twistAmount = energy.mid * 1.5; 
+                ctx.lineCap = 'round';
+
+                for (let x = gridStep / 2; x < width; x += gridStep) {
+                    for (let y = gridStep / 2; y < height; y += gridStep) {
+                        
+                        const dx = x - centerX;
+                        const dy = y - centerY;
+                        const distFromCenter = Math.hypot(dx, dy);
+                        const normDist = distFromCenter / maxDist; 
+                        
+                        const freqIndex = Math.floor(normDist * 50); 
+                        const audioVal = spectrum[freqIndex] || 0;
+                        
+                        // 1. ROOT DOTS (The Matrix)
+                        const currentSize = 1.5; 
+                        const dotAlpha = 0.4 + (0.6 * (1 - normDist));
+                        
+                        ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, dotAlpha)})`;
+                        ctx.beginPath();
+                        ctx.arc(x, y, currentSize, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // 2. NEEDLES (The Reaction)
+                        const baseAngle = Math.atan2(dy, dx);
+                        const noiseAngle = this.noise.perlin(x * 0.005, y * 0.005 + frame.time * 0.3);
+                        
+                        const audioDeflection = (audioVal * Math.PI * 0.8) * (energy.high + 0.5);
+                        const angle = baseAngle + (noiseAngle * 0.5) + (twistAmount * normDist * 0.2) + audioDeflection;
+
+                        const idleLen = 3 + (noiseAngle * 2); 
+                        const activeLen = (audioVal * 60) + (beatPulse * 30 * normDist);
+                        const length = Math.min(idleLen + activeLen, gridStep * 0.9);
+
+                        const tipX = x + Math.cos(angle) * length;
+                        const tipY = y + Math.sin(angle) * length;
+
+                        const lineAlpha = 0.2 + (audioVal * 0.8);
+                        
+                        // CHANGED: Thickness logic
+                        let thickness;
+                        if (!isPlaying) {
+                            thickness = 1.5; // Visible "design" mode when paused
+                        } else {
+                            // Dynamic mode: Min 0.5px -> Max 4px
+                            thickness = 0.5 + (audioVal * 3.5);
+                            thickness = Math.min(4.0, thickness);
+                        }
+
+                        if (length > 2.0) { 
+                            ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, lineAlpha)})`;
+                            ctx.lineWidth = thickness;
+                            ctx.beginPath();
+                            ctx.moveTo(x, y);
+                            ctx.lineTo(tipX, tipY);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            drawBreathingForm(ctx, width, height, frame) {
+                const gridSpacing = 25; 
+                const dashLength = 15; 
+                const { spectrum, energy, beatPulse, isPlaying } = frame;
+                ctx.lineCap = 'round';
+                for (let y = gridSpacing; y < height; y += gridSpacing) {
+                    const t = y / height; 
+                    const normY = 1 - t; 
+                    const audioIndex = Math.floor(normY * 40); 
+                    const audioVal = spectrum[audioIndex] || 0; 
+                    for (let x = gridSpacing; x < width; x += gridSpacing) {
+                        const noise = this.noise.perlin(
+                            x * 0.005 + frame.time * 0.2,
+                            y * 0.005 + frame.time * 0.2
+                        );
+                        const baseAngle = noise * Math.PI * 4;
+                        const audioRotation = audioVal * energy.mid * Math.PI;
+                        const angle = baseAngle + audioRotation;
+
+                        // CHANGED: Thickness logic
+                        let thickness;
+                        if (!isPlaying) {
+                            thickness = 1.5;
+                        } else {
+                            // Scale various inputs to sum approx 3.5 max
+                            thickness = 0.5 + (t * 0.5) + (audioVal * 2.5) + (beatPulse * 0.5);
+                            thickness = Math.min(4.0, thickness);
+                        }
+
+                        // CHANGED: Fixed length to dashLength. No audio scaling.
+                        const currentLength = dashLength;
+                        
+                        const halfLength = currentLength / 2;
+                        const x1 = x - Math.cos(angle) * halfLength;
+                        const y1 = y - Math.sin(angle) * halfLength;
+                        const x2 = x + Math.cos(angle) * halfLength;
+                        const y2 = y + Math.sin(angle) * halfLength;
+
+                        // Idle visibility logic (from previous turn)
+                        const alpha = !isPlaying ? 0.4 : (0.15 + audioVal * 0.85);
+
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                        ctx.lineWidth = thickness;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            drawHorizonStrings(ctx, width, height, frame) {
+                const numLines = 24; 
+                const { spectrum, beatPulse, isPlaying } = frame;
+                ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                for (let i = 0; i < numLines; i++) {
+                    const t = i / 19; 
+                    const yBase = 20 + Math.pow(t, 1.2) * (height - 40);
+                    const safeT = Math.min(1, t);
+                    const freqIndex = Math.floor((1 - safeT) * 30);
+                    const baseVal = spectrum[freqIndex] || 0;
+                    ctx.beginPath();
+                    for (let x = 0; x <= width; x += 8) {
+                        const noise = this.noise.perlin(x * 0.003 + frame.time * 0.1, yBase * 0.003);
+                        const xVal = spectrum[Math.floor((x/width) * spectrum.length)] || 0;
+                        const amp = (5 + t * 20) * (0.5 + baseVal + xVal * 0.5 + beatPulse * 0.2);
+                        const yOffset = Math.sin(noise * Math.PI * 4 + frame.time) * amp;
+                        if (x===0) ctx.moveTo(x, yBase + yOffset);
+                        else ctx.lineTo(x, yBase + yOffset);
+                    }
+                    
+                    // CHANGED: Thickness Logic
+                    if (!isPlaying) {
+                        ctx.lineWidth = 1.5;
+                    } else {
+                        // Max roughly 4px
+                        ctx.lineWidth = Math.min(4.0, 0.5 + (t * 2.0) + (beatPulse * 1.5));
+                    }
+
+                    const alpha = 0.2 + (t * 0.6) + (baseVal * 0.4);
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, alpha)})`;
+                    ctx.stroke();
+                }
+            }
+
+            drawDigitalGrid(ctx, width, height, frame) {
+                const gridStep = 25;
+                const { spectrum, energy, isPlaying } = frame;
+                ctx.lineCap = 'round';
+                for (let y = gridStep/2; y < height; y += gridStep) {
+                    const t = y / height;
+                    for (let x = gridStep/2; x < width; x += gridStep) {
+                        const noise = this.noise.perlin(x * 0.005, y * 0.005 + frame.time * 0.1);
+                        const angle = noise * Math.PI * 2 + (energy.bass * 0.5);
+                        const bassVal = spectrum[Math.floor((x/width)*20)] || 0;
+                        const trebleVal = spectrum[Math.floor(spectrum.length - 20 + (x/width)*20)] || 0;
+                        ctx.save();
+                        ctx.translate(x, y);
+                        ctx.rotate(angle);
+                        const lenTop = 5 + (t * 4) + (bassVal * 20);
+                        const lenBot = 5 + (t * 4) + (trebleVal * 15);
+                        
+                        // CHANGED: Thickness Logic
+                        // Re-added 't' multiplier to audio component.
+                        // This ensures foreground lines (t=1) thicken more than background lines (t=0).
+                        if (!isPlaying) {
+                            ctx.lineWidth = 1.5;
+                            ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`;
+                        } else {
+                            // Base: 0.5 (far) to 1.5 (near)
+                            // Reaction: 0 to 2.5 (only near)
+                            let th = 0.5 + (t * 1.0) + (bassVal * 2.5 * t);
+                            ctx.lineWidth = Math.min(4.0, th);
+                            ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 + bassVal * 0.9})`;
+                        }
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(0, -lenTop);
+                        ctx.lineTo(0, lenBot);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            }
+
+            drawKineticHalftone(ctx, width, height, frame) {
+                const gridSize = 16;
+                const cols = Math.ceil(width / gridSize);
+                const rows = Math.ceil(height / gridSize);
+                const { spectrum, beatPulse, isPlaying } = frame;
+                for (let r = 0; r < rows; r++) {
+                    const t = r / (rows - 1);
+                    const freqIndex = Math.floor((1 - t) * 40);
+                    const rowVal = spectrum[freqIndex] || 0;
+                    for (let c = 0; c < cols; c++) {
+                        const cx = c * gridSize + gridSize/2;
+                        const cy = r * gridSize + gridSize/2;
+                        const noise = this.noise.perlin(c * 0.1, r * 0.1 + frame.time);
+                        const val = rowVal * (0.8 + noise * 0.4) + (beatPulse * 0.2 * t);
+                        
+                        // CHANGED: Size Logic (acting as "thickness" here)
+                        let size;
+                        if (!isPlaying) {
+                            size = 2.0;
+                            ctx.fillStyle = `rgba(255, 255, 255, 0.3)`;
+                        } else {
+                            // Dynamic range 0.5 -> 4.0
+                            size = 0.5 + (val * 3.5);
+                            size = Math.max(0.5, Math.min(4.0, size));
+                            ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + val * 0.7})`;
+                        }
+                        
+                        const maxRad = size / 2;
+                        const morph = Math.min(1, val * 1.8);
+                        
+                        ctx.beginPath();
+                        if (ctx.roundRect) {
+                            ctx.roundRect(cx - size/2, cy - size/2, size, size, maxRad * morph);
+                        } else {
+                            if(val > 0.5) ctx.arc(cx, cy, size/2, 0, Math.PI*2);
+                            else ctx.rect(cx - size/2, cy - size/2, size, size);
+                        }
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        // --- INIT ---
+        const visualizer = new OrganicVisualizer('visualizer', 'audio');
+        const audio = document.getElementById('audio');
+        
+        // UI Handling
+        const playBtn = document.getElementById('playBtn');
+        const fileInput = document.getElementById('fileInput');
+        
+        visualizer.render();
+
+        playBtn.addEventListener('click', () => {
+            if (!audio.src) {
+                visualizer.engine.isSimulating = !visualizer.engine.isSimulating;
+                updateUI();
+                return;
+            }
+            if (audio.paused) {
+                audio.play();
+                visualizer.engine.resume();
+            } else {
+                audio.pause();
+            }
+            updateUI();
+        });
+
+        document.getElementById('uploadBtn').addEventListener('click', () => fileInput.click());
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                audio.src = URL.createObjectURL(file);
+                audio.play();
+                visualizer.engine.isSimulating = false;
+                visualizer.engine.init();
+                updateUI();
+                document.getElementById('trackTitle').textContent = file.name;
+            }
+        });
+
+        const btns = document.querySelectorAll('.pattern-btn');
+        btns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                btns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                visualizer.activePattern = btn.dataset.pattern;
+            });
+        });
+
+        function updateUI() {
+            const playIcon = document.getElementById('playIcon');
+            // Check if playing (either real audio or simulation)
+            const isPlaying = !audio.paused || visualizer.engine.isSimulating;
+            
+            if (isPlaying) {
+                // Pause Icon
+                playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+            } else {
+                // Play Icon
+                playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+            }
+        }
+        
+        window.addEventListener('resize', () => visualizer.setupCanvas());
+
+    </script>
+</body>
+</html>
