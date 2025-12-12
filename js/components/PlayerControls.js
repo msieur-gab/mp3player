@@ -7,6 +7,9 @@ class PlayerControls extends HTMLElement {
     constructor() {
         super();
         this.currentTrack = null;
+
+        // Memory leak fix: Track event unsubscribers
+        this.eventUnsubscribers = [];
     }
 
     connectedCallback() {
@@ -75,26 +78,28 @@ class PlayerControls extends HTMLElement {
             EventBus.emit('playback:seek', parseFloat(e.target.value));
         });
 
-        // Listen to playback events
-        EventBus.on('playback:play', () => {
-            this.updatePlayIcon(false);
-        });
+        // Memory leak fix: Track EventBus subscriptions for cleanup
+        this.eventUnsubscribers.push(
+            EventBus.on('playback:play', () => {
+                this.updatePlayIcon(false);
+            }),
 
-        EventBus.on('playback:pause', () => {
-            this.updatePlayIcon(true);
-        });
+            EventBus.on('playback:pause', () => {
+                this.updatePlayIcon(true);
+            }),
 
-        EventBus.on('playback:timeupdate', ({ progress }) => {
-            this.updateSeekBar(progress);
-        });
+            EventBus.on('playback:timeupdate', ({ progress }) => {
+                this.updateSeekBar(progress);
+            }),
 
-        EventBus.on('track:started', (track) => {
-            this.updateTrackInfo(track);
-        });
+            EventBus.on('track:started', (track) => {
+                this.updateTrackInfo(track);
+            }),
 
-        EventBus.on('track:artworkLoaded', (url) => {
-            this.updateArtwork(url);
-        });
+            EventBus.on('track:artworkLoaded', (url) => {
+                this.updateArtwork(url);
+            })
+        );
     }
 
     updatePlayIcon(paused) {
@@ -122,6 +127,18 @@ class PlayerControls extends HTMLElement {
         img.src = url;
         img.classList.remove('hidden');
         this.querySelector('#p-art-default').classList.add('hidden');
+    }
+
+    /**
+     * Cleanup when element is removed from DOM
+     * Memory leak fix: Unsubscribe from all events
+     */
+    disconnectedCallback() {
+        // Unsubscribe from EventBus
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        console.log('[PlayerControls] 🧹 Cleanup complete');
     }
 }
 
