@@ -64,8 +64,9 @@ class MusicPlayerApp {
             trackList: document.querySelector('track-list')
         };
 
-        // Set visualizer service on TrackList
+        // Set services on TrackList
         this.components.trackList.setVisualizerService(this.visualizer);
+        this.components.trackList.setDatabaseService(this.db);
 
         // Get permission banner reference
         this.permissionBanner = document.getElementById('perm-banner');
@@ -278,7 +279,7 @@ class MusicPlayerApp {
     /**
      * Switch between views
      */
-    switchView(mode, albumName = null, autoPlay = false) {
+    async switchView(mode, albumName = null, autoPlay = false) {
         this.currentView = mode;
 
         if (mode === 'ALBUMS') {
@@ -315,7 +316,7 @@ class MusicPlayerApp {
 
             this.components.albumGrid.hide();
             this.components.trackList.show();
-            this.components.trackList.setTracks(this.viewList, albumData);
+            await this.components.trackList.setTracks(this.viewList, albumData);
             EventBus.emit('view:changed', { view: 'TRACKS', title: albumName });
 
             // Auto-play first track

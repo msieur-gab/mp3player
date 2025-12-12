@@ -11,6 +11,8 @@ class TrackList extends HTMLElement {
         this.currentTrackId = null;
         this.ROW_HEIGHT = 60;
         this.visualizerService = null;
+        this.databaseService = null;
+        this.playCountCache = new Map(); // Cache play counts by trackKey
 
         // Memory leak fix: Track event unsubscribers
         this.eventUnsubscribers = [];
@@ -103,11 +105,23 @@ class TrackList extends HTMLElement {
     }
 
     /**
+     * Set database service
+     */
+    setDatabaseService(databaseService) {
+        this.databaseService = databaseService;
+    }
+
+    /**
      * Set tracks data with album info and render
      */
-    setTracks(tracks, albumData = null) {
+    async setTracks(tracks, albumData = null) {
         this.tracks = tracks;
         this.albumData = albumData;
+
+        // Load play counts for all tracks
+        if (this.databaseService) {
+            await this.loadPlayCounts();
+        }
 
         // Render album header with visualizer
         if (albumData) {
@@ -119,6 +133,31 @@ class TrackList extends HTMLElement {
         this.phantom.style.height = `${tracks.length * this.ROW_HEIGHT}px`;
         this.container.scrollTop = 0;
         this.renderVisibleTracks();
+    }
+
+    /**
+     * Load play counts for all tracks using trackKey
+     */
+    async loadPlayCounts() {
+        this.playCountCache.clear();
+
+        for (const track of this.tracks) {
+            const trackKey = this.databaseService.generateTrackKey(track);
+            const count = await this.databaseService.getPlayCount(track);
+            if (count > 0) {
+                this.playCountCache.set(trackKey, count);
+            }
+        }
+    }
+
+    /**
+     * Format duration from seconds to MM:SS
+     */
+    formatDuration(seconds) {
+        if (!seconds || seconds === 0) return '';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
     /**
@@ -196,13 +235,26 @@ class TrackList extends HTMLElement {
             const track = this.tracks[i];
             const isActive = this.currentTrackId === track.id;
 
+            // Get play count from cache using trackKey
+            const trackKey = this.databaseService ? this.databaseService.generateTrackKey(track) : null;
+            const playCount = trackKey ? (this.playCountCache.get(trackKey) || 0) : 0;
+
+            // Format duration
+            const duration = this.formatDuration(track.duration);
+
+            // Build metadata line: duration • play count
+            const metaParts = [];
+            if (duration) metaParts.push(duration);
+            if (playCount > 0) metaParts.push(`${playCount} plays`);
+            const metaLine = metaParts.length > 0 ? metaParts.join(' • ') : '';
+
             html += `
                 <div class="card ${isActive ? 'card-active' : ''}"
                      style="top:${top}px"
                      data-track-id="${track.id}">
                     <div class="card-content" style="padding-right: 1rem;">
                         <div class="card-title">${track.title}</div>
-                        <div class="card-meta">${track.artist}</div>
+                        <div class="card-meta">${track.artist}${metaLine ? ` • ${metaLine}` : ''}</div>
                     </div>
                     ${isActive ? '<i class="ph ph-speaker-high card-indicator"></i>' : ''}
                 </div>
