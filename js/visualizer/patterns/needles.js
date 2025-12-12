@@ -36,10 +36,7 @@ export function drawNeedles(ctx, width, height, frame, noise) {
             const distFromCenter = Math.hypot(dx, dy);
             const normDist = distFromCenter / maxDist;
 
-            const freqIndex = Math.floor(normDist * 50);
-            const audioVal = spectrum[freqIndex] || 0;
-
-            // 1. ROOT DOTS
+            // 1. ROOT DOTS (anchor points)
             const currentSize = 1.5;
             const dotAlpha = !isPlaying ? 1.0 : (0.4 + (0.6 * (1 - normDist)));
 
@@ -48,37 +45,35 @@ export function drawNeedles(ctx, width, height, frame, noise) {
             ctx.arc(x, y, currentSize, 0, Math.PI * 2);
             ctx.fill();
 
-            // 2. NEEDLES
-            const baseAngle = Math.atan2(dy, dx);
-            const noiseAngle = noise.perlin(x * 0.005, y * 0.005 + frame.time * 0.3);
+            // 2. NEEDLES (only when playing)
+            if (isPlaying) {
+                const freqIndex = Math.floor(normDist * 50);
+                const audioVal = spectrum[freqIndex] || 0;
 
-            const audioDeflection = (audioVal * Math.PI * 0.8) * (energy.high + 0.5);
-            const angle = baseAngle + (noiseAngle * 0.5) + (twistAmount * normDist * 0.2) + audioDeflection;
+                const baseAngle = Math.atan2(dy, dx);
+                const noiseAngle = noise.perlin(x * 0.005, y * 0.005 + frame.time * 0.3);
 
-            const idleLen = 3 + (noiseAngle * 2);
-            const activeLen = (audioVal * 60) + (beatPulse * 30 * normDist);
-            const length = Math.min(idleLen + activeLen, gridStep * 0.9);
+                const audioDeflection = (audioVal * Math.PI * 0.8) * (energy.high + 0.5);
+                const angle = baseAngle + (noiseAngle * 0.5) + (twistAmount * normDist * 0.2) + audioDeflection;
 
-            const tipX = x + Math.cos(angle) * length;
-            const tipY = y + Math.sin(angle) * length;
+                const idleLen = 3 + (noiseAngle * 2);
+                const activeLen = (audioVal * 60) + (beatPulse * 30 * normDist);
+                const length = Math.min(idleLen + activeLen, gridStep * 0.9);
 
-            const lineAlpha = !isPlaying ? 1.0 : (0.2 + (audioVal * 0.8));
+                const tipX = x + Math.cos(angle) * length;
+                const tipY = y + Math.sin(angle) * length;
 
-            let thickness;
-            if (!isPlaying) {
-                thickness = 1.5;
-            } else {
-                thickness = 0.5 + (audioVal * 3.5);
-                thickness = Math.min(4.0, thickness);
-            }
+                const lineAlpha = 0.2 + (audioVal * 0.8);
+                const thickness = Math.min(4.0, 0.5 + (audioVal * 3.5));
 
-            if (length > 2.0) {
-                ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, lineAlpha)})`;
-                ctx.lineWidth = thickness;
-                ctx.beginPath();
-                ctx.moveTo(x, y);
-                ctx.lineTo(tipX, tipY);
-                ctx.stroke();
+                if (length > 2.0) {
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, lineAlpha)})`;
+                    ctx.lineWidth = thickness;
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(tipX, tipY);
+                    ctx.stroke();
+                }
             }
         }
     }
