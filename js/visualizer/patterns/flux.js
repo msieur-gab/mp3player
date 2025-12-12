@@ -1,17 +1,10 @@
 /**
- * FLUX Pattern - Dense field of flowing parallel lines
+ * FLUX Pattern - Dense field of dashes creating wave patterns
  *
- * Inspired by flowing fabric or field lines creating depth through collective movement.
- * Many parallel lines curve and flow together, creating gentle waves across the canvas.
- * Subtle, meditative quality - like watching wind move through tall grass.
+ * Inspired by rain patterns, wave interference, flowing particles.
+ * Creates a dense field of small white dashes that form organic wave patterns.
  *
- * Design philosophy: Collective gentleness - beauty through synchronized subtlety.
- *
- * Audio mapping:
- * - Bass creates traveling waves through the field
- * - Mid energy controls flow direction and speed
- * - Treble adds delicate ripples
- * - All lines move together creating unified flow
+ * Design philosophy: Dense particle field, wave formation, organic flow.
  *
  * @param {CanvasRenderingContext2D} ctx - Canvas context
  * @param {number} width - Canvas width
@@ -20,111 +13,73 @@
  * @param {object} noise - Noise generator instance
  */
 export function drawFlux(ctx, width, height, frame, noise) {
-    const numLines = 50; // Dense field of lines
     const { spectrum, energy, beatPulse, isPlaying } = frame;
 
     ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 1.0)';
 
-    // Very gentle flow
-    const flowSpeed = isPlaying ? energy.mid * 0.2 : 0;
+    // Dense vertical spacing
+    const spacing = 8;
+    const numLines = Math.ceil(width / spacing);
 
-    // Draw diagonal lines from top-left to bottom-right
-    const spacing = 15; // Space between parallel lines
-    const totalLines = Math.ceil((width + height) / spacing);
+    // Number of dashes per vertical column
+    const dashesPerColumn = 25;
+    const dashLength = 6;
+    const dashSpacing = height / dashesPerColumn;
 
-    for (let i = 0; i < totalLines; i++) {
-        const t = i / totalLines;
+    for (let i = 0; i < numLines; i++) {
+        const x = i * spacing;
+        const lineT = i / numLines;
 
-        ctx.beginPath();
+        // Get frequency for this column
+        const freqIndex = Math.floor(lineT * 40);
+        const freqVal = spectrum[freqIndex] || 0;
 
-        // Each line starts from either top or left edge
-        let startX, startY, endX, endY;
+        for (let d = 0; d < dashesPerColumn; d++) {
+            const dashT = d / dashesPerColumn;
+            const baseY = d * dashSpacing;
 
-        if (i * spacing < width) {
-            // Start from top edge
-            startX = i * spacing;
-            startY = 0;
-            endX = 0;
-            endY = i * spacing;
-        } else {
-            // Start from right edge
-            startX = width;
-            startY = (i * spacing) - width;
-            endX = width - ((i * spacing) - width);
-            endY = height;
-        }
+            // Create wave pattern using multiple sine waves and noise
+            const wave1 = Math.sin((lineT * Math.PI * 4) + (isPlaying ? frame.time * 1.2 : 0));
+            const wave2 = Math.sin((lineT * Math.PI * 2) + (dashT * Math.PI * 3) + (isPlaying ? frame.time * 0.8 : 0));
 
-        // Draw curved line from start to end
-        const numSegments = 50;
-
-        for (let s = 0; s <= numSegments; s++) {
-            const progress = s / numSegments;
-
-            // Interpolate between start and end
-            const baseX = startX + (endX - startX) * progress;
-            const baseY = startY + (endY - startY) * progress;
-
-            // Create traveling waves using spectrum
-            let waveOffset = 0;
-            const numWaves = 2;
-
-            for (let w = 0; w < numWaves; w++) {
-                const freqIndex = Math.floor(w * 12);
-                const freqVal = spectrum[freqIndex] || 0;
-
-                // Wave position moves along the line
-                const wavePos = ((frame.time * (0.04 + w * 0.02) + w * 0.4) % 1);
-                const distFromWave = Math.abs(progress - wavePos);
-
-                // Very smooth wave influence
-                const influence = Math.exp(-distFromWave * distFromWave * 10);
-                waveOffset += freqVal * influence;
-            }
-
-            // Perlin noise for organic movement
             const noiseVal = noise.perlin(
-                progress * 2 + frame.time * (0.05 + flowSpeed * 0.1),
-                i * 0.1 + frame.time * 0.03
+                i * 0.15 + (isPlaying ? frame.time * 0.3 : 0),
+                d * 0.2 + (isPlaying ? frame.time * 0.2 : 0)
             );
 
-            // Combine influences - very subtle
-            const amp = isPlaying ? 10 + energy.bass * 15 : 6;
-            const totalOffset = (noiseVal * 0.5 + waveOffset * 0.5 + beatPulse * 0.2) * amp;
+            // Combine waves and noise to determine if dash should be drawn
+            const waveInfluence = (wave1 + wave2) * 0.5 + noiseVal;
+            const threshold = isPlaying ? -0.3 + freqVal * 0.8 : 0.2;
 
-            // Offset perpendicular to line (diagonal)
-            const perpX = -totalOffset * 0.707; // cos(45°)
-            const perpY = totalOffset * 0.707;  // sin(45°)
+            if (waveInfluence > threshold) {
+                // Vertical offset based on wave
+                const yOffset = waveInfluence * (isPlaying ? (10 + freqVal * 20) : 5);
+                const y = baseY + yOffset;
 
-            const x = baseX + perpX;
-            const y = baseY + perpY;
+                // Length varies with audio
+                const length = isPlaying ? (dashLength + freqVal * 8 + beatPulse * 4) : dashLength;
 
-            if (s === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
+                // Thickness varies slightly
+                const thickness = isPlaying ? (1.0 + freqVal * 2) : 1.0;
+
+                // Opacity varies with position and audio
+                const alpha = isPlaying ? (0.6 + freqVal * 0.4) : 1.0;
+
+                ctx.beginPath();
+                ctx.moveTo(x, y - length / 2);
+                ctx.lineTo(x, y + length / 2);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, alpha)})`;
+                ctx.lineWidth = thickness;
+                ctx.stroke();
             }
         }
-
-        // Delicate line style - fade toward edges
-        if (!isPlaying) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 1.0)';
-            ctx.lineWidth = 0.7;
-        } else {
-            // Very subtle opacity variation
-            const centerDist = Math.abs(t - 0.5) * 2; // 0 at center, 1 at edges
-            const alpha = 0.2 + (0.3 * (1 - centerDist)) + (energy.bass * 0.15);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(0.7, alpha)})`;
-            ctx.lineWidth = 0.6 + (energy.bass * 0.4);
-        }
-
-        ctx.stroke();
     }
 }
 
 export const metadata = {
     name: 'Flux',
-    description: 'Dense field of parallel lines flowing like fabric in wind',
+    description: 'Dense field of dashes creating organic wave patterns',
     author: 'MP3Player',
     responsive: true,
     optimized: true
