@@ -11,6 +11,14 @@ class TrackList extends HTMLElement {
         this.currentTrackId = null;
         this.ROW_HEIGHT = 60;
         this.visualizerService = null;
+
+        // Memory leak fix: Track event unsubscribers
+        this.eventUnsubscribers = [];
+
+        // Event delegation: Bind handlers once
+        this.boundHandleTrackClick = this.handleTrackClick.bind(this);
+        this.boundHandleScroll = this.handleScroll.bind(this);
+        this.boundHandlePatternClick = this.handlePatternClick.bind(this);
     }
 
     connectedCallback() {
@@ -35,16 +43,56 @@ class TrackList extends HTMLElement {
     }
 
     setupEventListeners() {
-        // Scroll handler for virtual scrolling
-        this.container.addEventListener('scroll', () => {
-            this.renderVisibleTracks();
-        });
+        // Memory leak fix: Use event delegation on container (single listener)
+        this.content.addEventListener('click', this.boundHandleTrackClick);
 
-        // Listen for track changes
-        EventBus.on('track:started', (track) => {
-            this.currentTrackId = track.id;
-            this.renderVisibleTracks();
-        });
+        // Scroll handler for virtual scrolling
+        this.container.addEventListener('scroll', this.boundHandleScroll);
+
+        // Memory leak fix: Track EventBus subscriptions for cleanup
+        this.eventUnsubscribers.push(
+            EventBus.on('track:started', (track) => {
+                this.currentTrackId = track.id;
+                this.renderVisibleTracks();
+            })
+        );
+    }
+
+    /**
+     * Event delegation handler for track clicks
+     */
+    handleTrackClick(e) {
+        const card = e.target.closest('.card');
+        if (card) {
+            const trackId = parseInt(card.dataset.trackId);
+            EventBus.emit('track:selected', trackId);
+        }
+    }
+
+    /**
+     * Scroll handler for virtual scrolling
+     */
+    handleScroll() {
+        this.renderVisibleTracks();
+    }
+
+    /**
+     * Event delegation handler for pattern button clicks
+     */
+    handlePatternClick(e) {
+        const btn = e.target.closest('.pattern-btn');
+        if (btn) {
+            // Update active state
+            this.albumHeader.querySelectorAll('.pattern-btn').forEach(b => {
+                b.classList.remove('active');
+            });
+            btn.classList.add('active');
+
+            // Change pattern
+            if (this.visualizerService) {
+                this.visualizerService.setPattern(btn.dataset.pattern);
+            }
+        }
     }
 
     /**
@@ -120,23 +168,18 @@ class TrackList extends HTMLElement {
 
     /**
      * Setup pattern switcher buttons
+     * Memory leak fix: Use event delegation instead of adding listener to each button
      */
     setupPatternSwitcher() {
-        const buttons = this.albumHeader.querySelectorAll('.pattern-btn');
-        buttons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                buttons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const pattern = btn.dataset.pattern;
-                if (this.visualizerService) {
-                    this.visualizerService.setPattern(pattern);
-                }
-            });
-        });
+        const patternContainer = this.albumHeader.querySelector('.pattern-switcher');
+        if (patternContainer) {
+            patternContainer.addEventListener('click', this.boundHandlePatternClick);
+        }
     }
 
     /**
      * Render only visible tracks (virtual scrolling)
+     * Memory leak fix: No individual event listeners - using event delegation
      */
     renderVisibleTracks() {
         const scrollTop = this.container.scrollTop;
@@ -167,14 +210,7 @@ class TrackList extends HTMLElement {
         }
 
         this.content.innerHTML = html;
-
-        // Add click handlers after rendering
-        this.content.querySelectorAll('.card').forEach(card => {
-            card.addEventListener('click', () => {
-                const trackId = parseInt(card.dataset.trackId);
-                EventBus.emit('track:selected', trackId);
-            });
-        });
+        // No event listeners added here - handled by event delegation
     }
 
     /**
@@ -195,6 +231,31 @@ class TrackList extends HTMLElement {
             this.visualizerService.disable();
             console.log('[TrackList] 🛑 Visualizer disabled on hide');
         }
+    }
+
+    /**
+     * Cleanup when element is removed from DOM
+     * Memory leak fix: Remove all event listeners
+     */
+    disconnectedCallback() {
+        // Remove DOM event listeners
+        if (this.content) {
+            this.content.removeEventListener('click', this.boundHandleTrackClick);
+        }
+        if (this.container) {
+            this.container.removeEventListener('scroll', this.boundHandleScroll);
+        }
+
+        const patternContainer = this.albumHeader?.querySelector('.pattern-switcher');
+        if (patternContainer) {
+            patternContainer.removeEventListener('click', this.boundHandlePatternClick);
+        }
+
+        // Unsubscribe from EventBus
+        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers = [];
+
+        console.log('[TrackList] 🧹 Cleanup complete');
     }
 }
 
