@@ -17,6 +17,8 @@ import './components/AppHeader.js';
 import './components/PlayerControls.js';
 import './components/AlbumGrid.js';
 import './components/TrackList.js';
+import './components/PermissionModal.js';
+import './components/Toast.js';
 
 class MusicPlayerApp {
     constructor() {
@@ -66,17 +68,17 @@ class MusicPlayerApp {
             header: document.querySelector('app-header'),
             player: document.querySelector('player-controls'),
             albumGrid: document.querySelector('album-grid'),
-            trackList: document.querySelector('track-list')
+            trackList: document.querySelector('track-list'),
+            permissionModal: document.querySelector('permission-modal')
         };
 
         // Set services on TrackList
         this.components.trackList.setVisualizerService(this.visualizer);
         this.components.trackList.setDatabaseService(this.db);
 
-        // Get permission banner reference
-        this.permissionBanner = document.getElementById('perm-banner');
-        if (this.permissionBanner) {
-            this.permissionBanner.addEventListener('click', () => {
+        // Setup permission modal handler
+        if (this.components.permissionModal) {
+            this.components.permissionModal.addEventListener('grant-permission', () => {
                 this.handlePermissionRequest();
             });
         }
@@ -145,9 +147,9 @@ class MusicPlayerApp {
         // Permission events
         this.eventUnsubscribers.push(
             EventBus.on('permission:needed', () => {
-                // Always show banner if permission lost (no throttling)
+                // Always show modal if permission lost (no throttling)
                 // App is unusable without permissions
-                this.showPermissionBanner();
+                this.showPermissionModal();
             })
         );
 
@@ -435,43 +437,48 @@ class MusicPlayerApp {
     }
 
     /**
-     * Show permission banner
+     * Show permission modal
      */
-    showPermissionBanner() {
-        if (this.permissionBanner) {
-            this.permissionBanner.classList.remove('hidden');
+    showPermissionModal() {
+        if (this.components.permissionModal) {
+            this.components.permissionModal.show();
         }
     }
 
     /**
-     * Hide permission banner
+     * Hide permission modal
      */
-    hidePermissionBanner() {
-        if (this.permissionBanner) {
-            this.permissionBanner.classList.add('hidden');
+    hidePermissionModal() {
+        if (this.components.permissionModal) {
+            this.components.permissionModal.hide();
         }
     }
 
     /**
-     * Handle permission banner click - request permission
+     * Handle permission modal grant button click - request permission
      */
     async handlePermissionRequest() {
         const handle = await this.permissions.getHandle();
         if (!handle) {
             console.warn('[App] No directory handle available');
+            this.hidePermissionModal();
+            window.toast.error('No music folder configured. Please scan your music folder first.');
             return;
         }
 
         try {
             const granted = await this.permissions.requestPermissionManual();
             if (granted) {
-                this.hidePermissionBanner();
+                this.hidePermissionModal();
+                window.toast.success('Folder access granted!');
                 console.log('[App] Permission granted');
             } else {
                 console.log('[App] Permission denied');
+                window.toast.error('Permission denied. Tap "Grant Access" to try again.');
             }
         } catch (error) {
             console.error('[App] Error requesting permission:', error);
+            window.toast.error('Failed to request permission. Please try again.');
         }
     }
 

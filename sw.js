@@ -1,4 +1,4 @@
-const CACHE_NAME = 'music-pwa-v21';
+const CACHE_NAME = 'music-pwa-v22';
 const ASSETS = [
   './',
   './index.html',
@@ -27,6 +27,8 @@ const ASSETS = [
   './js/components/PlayerControls.js',
   './js/components/AlbumGrid.js',
   './js/components/TrackList.js',
+  './js/components/PermissionModal.js',
+  './js/components/Toast.js',
   'https://unpkg.com/dexie/dist/dexie.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js',
   'https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css',
