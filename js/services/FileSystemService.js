@@ -235,6 +235,12 @@ class FileSystemService {
             for await (const entry of handle.values()) {
                 if (entry.kind === 'file') {
                     const name = entry.name;
+
+                    // Skip hidden files and macOS resource fork files
+                    if (name.startsWith('.') || name.startsWith('._')) {
+                        continue;
+                    }
+
                     if (/\.(mp3|m4a|flac|wav|ogg)$/i.test(name)) {
                         const track = await processFile(entry, name, path);
                         const albumKey = `${track.album}|${track.artist}`;

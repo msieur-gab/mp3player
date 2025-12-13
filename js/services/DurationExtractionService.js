@@ -34,7 +34,11 @@ class DurationExtractionService {
             this.cancel();
         }
 
-        this.queue = [...tracks];
+        // Filter out hidden files and system files
+        this.queue = tracks.filter(track => {
+            const filename = track.path.split('/').pop();
+            return !filename.startsWith('.') && !filename.startsWith('._');
+        });
         this.extracted = 0;
         this.failed = 0;
         this.isExtracting = true;
