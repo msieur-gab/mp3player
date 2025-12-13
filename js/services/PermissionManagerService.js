@@ -2,6 +2,8 @@
  * PermissionManagerService - Manages file system access permissions
  * Handles persistent storage of directory handles and permission lifecycle
  */
+import EventBus from '../utils/EventBus.js';
+
 class PermissionManagerService {
     constructor(databaseService) {
         this.db = databaseService;
@@ -46,6 +48,8 @@ class PermissionManagerService {
                         console.log('[PermissionManager] Auto-request succeeded');
                     } else {
                         console.log('[PermissionManager] Auto-request failed or denied');
+                        // Emit event to show banner (with throttling handled in main.js)
+                        EventBus.emit('permission:needed');
                     }
                 }
             } else {
