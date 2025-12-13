@@ -83,16 +83,16 @@ class MusicPlayerApp {
             });
         }
 
+        // Setup event listeners BEFORE services init (to catch init events)
+        this.setupEventListeners();
+        this.setupServiceWorker();
+
         // Initialize services
         await this.db.init();
         await this.permissions.init();
         await this.fs.init();
         this.playback.init();
         this.theme.init();
-
-        // Setup event listeners
-        this.setupEventListeners();
-        this.setupServiceWorker();
 
         // Load library
         await this.loadLibrary();
