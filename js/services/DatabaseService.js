@@ -112,9 +112,60 @@ class DatabaseService {
 
     /**
      * Bulk add tracks to database
+     * Preserves existing track data (especially duration) during rescans
      */
     async bulkAddTracks(tracks) {
-        await this.db.tracks.bulkAdd(tracks);
+        // Get all existing tracks indexed by path for fast lookup
+        const existingTracks = await this.db.tracks.toArray();
+        const existingByPath = new Map();
+        existingTracks.forEach(track => {
+            if (track.path) {
+                existingByPath.set(track.path, track);
+            }
+        });
+
+        const tracksToAdd = [];
+        const tracksToUpdate = [];
+
+        for (const track of tracks) {
+            const existing = existingByPath.get(track.path);
+
+            if (existing) {
+                // Track exists - update it, preserving duration and other extracted data
+                tracksToUpdate.push({
+                    key: existing.id,
+                    changes: {
+                        // Update handle and scanSessionId (scan data)
+                        handle: track.handle,
+                        scanSessionId: track.scanSessionId,
+                        // Update metadata that might have changed
+                        title: track.title,
+                        artist: track.artist,
+                        album: track.album,
+                        trackNumber: track.trackNumber,
+                        genre: track.genre,
+                        year: track.year,
+                        coverArt: track.coverArt,
+                        // Preserve duration if it exists (don't overwrite with null)
+                        ...(existing.duration && { duration: existing.duration })
+                    }
+                });
+            } else {
+                // New track - add it
+                tracksToAdd.push(track);
+            }
+        }
+
+        // Perform bulk operations
+        if (tracksToAdd.length > 0) {
+            await this.db.tracks.bulkAdd(tracksToAdd);
+        }
+
+        if (tracksToUpdate.length > 0) {
+            await this.db.tracks.bulkUpdate(tracksToUpdate);
+        }
+
+        console.log(`[DatabaseService] Added ${tracksToAdd.length} new tracks, updated ${tracksToUpdate.length} existing tracks`);
     }
 
     /**

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'music-pwa-v24';
+const CACHE_NAME = 'music-pwa-v25';
 const ASSETS = [
   './',
   './index.html',
