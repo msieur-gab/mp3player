@@ -9,8 +9,6 @@ class PermissionManagerService {
         this.db = databaseService;
 
         // Constants
-        this.THROTTLE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-        this.STORAGE_KEY_LAST_PROMPT = 'lastPermissionPrompt';
         this.IDB_NAME = 'MusicPlayerHandles';
         this.IDB_VERSION = 1;
         this.HANDLE_STORE = 'handles';
@@ -18,7 +16,6 @@ class PermissionManagerService {
         // State
         this.dirHandle = null;
         this.idb = null;
-        this.autoRequestAttempted = false;
     }
 
     /**
@@ -161,28 +158,6 @@ class PermissionManagerService {
     }
 
     /**
-     * Request permission automatically (silent, no user notification)
-     */
-    async requestPermissionAuto() {
-        if (!this.dirHandle) return false;
-
-        // Only attempt once per session to avoid spam
-        if (this.autoRequestAttempted) {
-            return false;
-        }
-
-        this.autoRequestAttempted = true;
-
-        try {
-            const status = await this.dirHandle.requestPermission({ mode: 'read' });
-            return status === 'granted';
-        } catch (error) {
-            console.log('[PermissionManager] Auto-request failed:', error.message);
-            return false;
-        }
-    }
-
-    /**
      * Request permission manually (user-initiated)
      */
     async requestPermissionManual() {
@@ -190,42 +165,11 @@ class PermissionManagerService {
 
         try {
             const status = await this.dirHandle.requestPermission({ mode: 'read' });
-            const granted = status === 'granted';
-
-            // Update throttle timestamp
-            if (granted) {
-                localStorage.setItem(this.STORAGE_KEY_LAST_PROMPT, Date.now().toString());
-                console.log('[PermissionManager] Permission granted, timestamp updated');
-            }
-
-            return granted;
+            return status === 'granted';
         } catch (error) {
             console.error('[PermissionManager] Manual request failed:', error);
             return false;
         }
-    }
-
-    /**
-     * Check if banner should be shown (throttling logic)
-     */
-    shouldShowBanner() {
-        const lastPrompt = localStorage.getItem(this.STORAGE_KEY_LAST_PROMPT);
-
-        // Never prompted before
-        if (!lastPrompt) return true;
-
-        // Check if 24 hours have passed
-        const elapsed = Date.now() - parseInt(lastPrompt, 10);
-        return elapsed >= this.THROTTLE_DURATION;
-    }
-
-    /**
-     * Get time until next prompt allowed
-     */
-    getTimeUntilNextPrompt() {
-        const lastPrompt = parseInt(localStorage.getItem(this.STORAGE_KEY_LAST_PROMPT) || '0', 10);
-        const elapsed = Date.now() - lastPrompt;
-        return Math.max(0, this.THROTTLE_DURATION - elapsed);
     }
 
     /**
@@ -252,12 +196,6 @@ class PermissionManagerService {
         });
     }
 
-    /**
-     * Reset auto-request flag (for testing)
-     */
-    resetAutoRequestFlag() {
-        this.autoRequestAttempted = false;
-    }
 }
 
 export default PermissionManagerService;

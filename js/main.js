@@ -145,13 +145,9 @@ class MusicPlayerApp {
         // Permission events
         this.eventUnsubscribers.push(
             EventBus.on('permission:needed', () => {
-                if (this.permissions.shouldShowBanner()) {
-                    this.showPermissionBanner();
-                } else {
-                    const msRemaining = this.permissions.getTimeUntilNextPrompt();
-                    const hoursRemaining = Math.ceil(msRemaining / (1000 * 60 * 60));
-                    console.log(`[App] Permission banner throttled (${hoursRemaining}h remaining)`);
-                }
+                // Always show banner if permission lost (no throttling)
+                // App is unusable without permissions
+                this.showPermissionBanner();
             })
         );
 
