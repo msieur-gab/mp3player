@@ -81,10 +81,14 @@ class AlbumGrid extends HTMLElement {
         let html = '';
 
         this.albumKeys.forEach((albumName) => {
-            const count = this.albums[albumName].length;
+            const tracks = this.albums[albumName];
+            const count = tracks.length;
             const coverUrl = this.albumCovers[albumName];
             const duration = this.albumDurations[albumName];
             const escapedName = albumName.replace(/'/g, "\\'");
+
+            // Get artist from first track
+            const artist = tracks[0]?.artist || 'Unknown Artist';
 
             // Build metadata line
             const metaParts = [`${count} track${count !== 1 ? 's' : ''}`];
@@ -99,6 +103,7 @@ class AlbumGrid extends HTMLElement {
                     </div>
                     <div class="album-info">
                         <div class="album-name">${albumName}</div>
+                        <div class="album-artist">${artist}</div>
                         <div class="album-track-count">${metaParts.join(' • ')}</div>
                     </div>
                 </div>
