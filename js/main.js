@@ -9,6 +9,7 @@ import MetadataService from './services/MetadataService.js';
 import PlaybackService from './services/PlaybackService.js';
 import ThemeService from './services/ThemeService.js';
 import VisualizerService from './services/VisualizerService.js';
+import DurationExtractionService from './services/DurationExtractionService.js';
 
 // Import components
 import './components/AppHeader.js';
@@ -25,6 +26,7 @@ class MusicPlayerApp {
         this.playback = new PlaybackService(this.metadata, this.db);
         this.visualizer = new VisualizerService(this.playback);
         this.theme = new ThemeService();
+        this.durationExtractor = new DurationExtractionService(this.db, this.metadata);
 
         // Application state
         this.allTracks = [];
@@ -136,6 +138,42 @@ class MusicPlayerApp {
         // Permission events
         this.eventUnsubscribers.push(
             EventBus.on('permission:needed', () => this.showPermissionBanner())
+        );
+
+        // Duration extraction events
+        this.eventUnsubscribers.push(
+            EventBus.on('duration:trackExtracted', ({ trackId, duration }) => {
+                // Update in-memory track
+                const track = this.allTracks.find(t => t.id === trackId);
+                if (!track) return;
+
+                track.duration = duration;
+
+                // Check if album is now complete (all tracks have duration)
+                const albumName = track.album;
+                const albumDuration = this.calculateAlbumDuration(albumName);
+
+                // Only update UI if album is 100% complete
+                if (albumDuration) {
+                    if (this.currentView === 'ALBUMS') {
+                        this.components.albumGrid.updateAlbumDuration(albumName, albumDuration);
+                    } else if (this.currentView === 'TRACKS' && this.activeAlbumName === albumName) {
+                        // Update album header
+                        const tracks = this.albums[albumName];
+                        const firstTrack = tracks[0];
+                        const albumData = {
+                            name: albumName,
+                            artist: firstTrack.artist,
+                            trackCount: tracks.length,
+                            year: firstTrack.year || null,
+                            genre: firstTrack.genre || null,
+                            duration: albumDuration
+                        };
+                        this.components.trackList.albumData = albumData;
+                        this.components.trackList.renderAlbumHeader();
+                    }
+                }
+            })
         );
 
         // Memory leak fix: Use bound handler for window resize
@@ -253,6 +291,13 @@ class MusicPlayerApp {
                 EventBus.emit('library:loaded', this.allTracks.length);
                 // Extract album covers in background
                 this.metadata.extractAlbumCovers(this.albums);
+
+                // Start background duration extraction for tracks missing duration
+                const tracksNeedingDuration = this.allTracks.filter(t => !t.duration);
+                if (tracksNeedingDuration.length > 0) {
+                    console.log(`[App] Extracting durations for ${tracksNeedingDuration.length} tracks`);
+                    this.extractMissingDurations(tracksNeedingDuration);
+                }
             } else {
                 emptyState.classList.remove('hidden');
             }
@@ -277,6 +322,28 @@ class MusicPlayerApp {
     }
 
     /**
+     * Start background duration extraction
+     */
+    async extractMissingDurations(tracks) {
+        await this.durationExtractor.extractMissingDurations(tracks);
+    }
+
+    /**
+     * Calculate total duration for an album
+     * Returns null if ANY track is missing duration (accuracy requirement)
+     */
+    calculateAlbumDuration(albumName) {
+        const tracks = this.albums[albumName];
+        if (!tracks || tracks.length === 0) return null;
+
+        // Require ALL tracks to have duration (no partial durations)
+        const allHaveDuration = tracks.every(t => t.duration);
+        if (!allHaveDuration) return null;
+
+        return tracks.reduce((sum, t) => sum + t.duration, 0);
+    }
+
+    /**
      * Switch between views
      */
     async switchView(mode, albumName = null, autoPlay = false) {
@@ -286,10 +353,21 @@ class MusicPlayerApp {
             this.activeAlbumName = null;
             this.components.albumGrid.show();
             this.components.trackList.hide();
+
+            // Calculate album durations (only complete albums)
+            const albumDurations = {};
+            this.albumKeys.forEach(name => {
+                const duration = this.calculateAlbumDuration(name);
+                if (duration) {
+                    albumDurations[name] = duration;
+                }
+            });
+
             this.components.albumGrid.setData(
                 this.albums,
                 this.albumKeys,
-                this.metadata.albumCovers
+                this.metadata.albumCovers,
+                albumDurations
             );
             EventBus.emit('view:changed', { view: 'ALBUMS' });
 
@@ -311,7 +389,8 @@ class MusicPlayerApp {
                 artist: firstTrack.artist || 'Unknown Artist',
                 trackCount: this.viewList.length,
                 year: firstTrack.year || null,
-                genre: firstTrack.genre || null
+                genre: firstTrack.genre || null,
+                duration: this.calculateAlbumDuration(albumName)
             };
 
             this.components.albumGrid.hide();
@@ -385,6 +464,11 @@ class MusicPlayerApp {
      */
     destroy() {
         console.log('[App] 🗑️ Destroying application');
+
+        // Cancel any ongoing extraction
+        if (this.durationExtractor) {
+            this.durationExtractor.cancel();
+        }
 
         // Unsubscribe from EventBus
         this.eventUnsubscribers.forEach(unsub => unsub());

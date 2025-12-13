@@ -164,9 +164,21 @@ class TrackList extends HTMLElement {
      * Render album header with visualizer and metadata
      */
     renderAlbumHeader() {
-        const { name, artist, trackCount, year, genre } = this.albumData;
+        const { name, artist, trackCount, year, genre, duration } = this.albumData;
 
         const metadata = [];
+
+        // Add duration first if available (most prominent)
+        if (duration) {
+            const hours = Math.floor(duration / 3600);
+            const minutes = Math.floor((duration % 3600) / 60);
+            if (hours > 0) {
+                metadata.push(`${hours}h ${minutes}m`);
+            } else {
+                metadata.push(`${minutes} min`);
+            }
+        }
+
         if (year) metadata.push(year);
         if (genre) metadata.push(genre);
         if (trackCount) metadata.push(`${trackCount} track${trackCount !== 1 ? 's' : ''}`);

@@ -9,6 +9,7 @@ class AlbumGrid extends HTMLElement {
         this.albums = {};
         this.albumKeys = [];
         this.albumCovers = {};
+        this.albumDurations = {};
 
         // Memory leak fix: Track event unsubscribers
         this.eventUnsubscribers = [];
@@ -48,11 +49,28 @@ class AlbumGrid extends HTMLElement {
     /**
      * Set albums data and render
      */
-    setData(albums, albumKeys, albumCovers = {}) {
+    setData(albums, albumKeys, albumCovers = {}, albumDurations = {}) {
         this.albums = albums;
         this.albumKeys = albumKeys;
         this.albumCovers = albumCovers;
+        this.albumDurations = albumDurations;
         this.render();
+    }
+
+    /**
+     * Format duration from seconds to human readable
+     * For albums: "45 min", "1h 23m"
+     */
+    formatAlbumDuration(seconds) {
+        if (!seconds || seconds === 0) return '';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        }
+        return `${minutes} min`;
     }
 
     /**
@@ -65,7 +83,14 @@ class AlbumGrid extends HTMLElement {
         this.albumKeys.forEach((albumName) => {
             const count = this.albums[albumName].length;
             const coverUrl = this.albumCovers[albumName];
+            const duration = this.albumDurations[albumName];
             const escapedName = albumName.replace(/'/g, "\\'");
+
+            // Build metadata line
+            const metaParts = [`${count} track${count !== 1 ? 's' : ''}`];
+            if (duration) {
+                metaParts.push(this.formatAlbumDuration(duration));
+            }
 
             html += `
                 <div class="album-card" data-album="${escapedName}">
@@ -74,7 +99,7 @@ class AlbumGrid extends HTMLElement {
                     </div>
                     <div class="album-info">
                         <div class="album-name">${albumName}</div>
-                        <div class="album-track-count">${count} track${count !== 1 ? 's' : ''}</div>
+                        <div class="album-track-count">${metaParts.join(' • ')}</div>
                     </div>
                 </div>
             `;
@@ -95,6 +120,28 @@ class AlbumGrid extends HTMLElement {
             const coverDiv = card.querySelector('.album-cover');
             if (coverDiv) {
                 coverDiv.innerHTML = `<img src="${coverUrl}" alt="${albumName}">`;
+            }
+        }
+    }
+
+    /**
+     * Update album duration without full re-render
+     * Called when background extraction completes an album
+     */
+    updateAlbumDuration(albumName, duration) {
+        this.albumDurations[albumName] = duration;
+
+        const escapedName = albumName.replace(/'/g, "\\'");
+        const card = this.querySelector(`[data-album="${escapedName}"]`);
+        if (card) {
+            const metaDiv = card.querySelector('.album-track-count');
+            if (metaDiv) {
+                const count = this.albums[albumName].length;
+                const metaParts = [`${count} track${count !== 1 ? 's' : ''}`];
+                if (duration) {
+                    metaParts.push(this.formatAlbumDuration(duration));
+                }
+                metaDiv.textContent = metaParts.join(' • ');
             }
         }
     }
