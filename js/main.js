@@ -4,6 +4,7 @@
  */
 import EventBus from './utils/EventBus.js';
 import DatabaseService from './services/DatabaseService.js';
+import PermissionManagerService from './services/PermissionManagerService.js';
 import FileSystemService from './services/FileSystemService.js';
 import MetadataService from './services/MetadataService.js';
 import PlaybackService from './services/PlaybackService.js';
@@ -21,12 +22,13 @@ class MusicPlayerApp {
     constructor() {
         // Initialize services
         this.db = new DatabaseService();
+        this.permissions = new PermissionManagerService(this.db);
         this.metadata = new MetadataService(this.db);
-        this.fs = new FileSystemService(this.db, this.metadata);
+        this.fs = new FileSystemService(this.db, this.metadata, this.permissions);
         this.playback = new PlaybackService(this.metadata, this.db);
         this.visualizer = new VisualizerService(this.playback);
         this.theme = new ThemeService();
-        this.durationExtractor = new DurationExtractionService(this.db, this.metadata);
+        this.durationExtractor = new DurationExtractionService(this.db, this.metadata, this.permissions);
 
         // Application state
         this.allTracks = [];
@@ -81,6 +83,7 @@ class MusicPlayerApp {
 
         // Initialize services
         await this.db.init();
+        await this.permissions.init();
         await this.fs.init();
         this.playback.init();
         this.theme.init();
@@ -141,7 +144,15 @@ class MusicPlayerApp {
 
         // Permission events
         this.eventUnsubscribers.push(
-            EventBus.on('permission:needed', () => this.showPermissionBanner())
+            EventBus.on('permission:needed', () => {
+                if (this.permissions.shouldShowBanner()) {
+                    this.showPermissionBanner();
+                } else {
+                    const msRemaining = this.permissions.getTimeUntilNextPrompt();
+                    const hoursRemaining = Math.ceil(msRemaining / (1000 * 60 * 60));
+                    console.log(`[App] Permission banner throttled (${hoursRemaining}h remaining)`);
+                }
+            })
         );
 
         // Duration extraction events
@@ -449,16 +460,19 @@ class MusicPlayerApp {
      * Handle permission banner click - request permission
      */
     async handlePermissionRequest() {
-        if (!this.fs.getDirectoryHandle()) {
+        const handle = await this.permissions.getHandle();
+        if (!handle) {
             console.warn('[App] No directory handle available');
             return;
         }
 
         try {
-            const granted = await this.fs.requestPermission();
+            const granted = await this.permissions.requestPermissionManual();
             if (granted) {
                 this.hidePermissionBanner();
                 console.log('[App] Permission granted');
+            } else {
+                console.log('[App] Permission denied');
             }
         } catch (error) {
             console.error('[App] Error requesting permission:', error);

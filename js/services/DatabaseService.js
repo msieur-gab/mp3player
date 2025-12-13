@@ -84,19 +84,10 @@ class DatabaseService {
     }
 
     /**
-     * Save directory handle to database
+     * Note: Directory handles are managed by PermissionManagerService
+     * using native IndexedDB (not Dexie) for proper structured cloning.
+     * FileSystemDirectoryHandle objects cannot be reliably serialized via Dexie.
      */
-    async saveDirectoryHandle(handle) {
-        await this.db.tracks.put({ id: 'root_handle', handle });
-    }
-
-    /**
-     * Get saved directory handle
-     */
-    async getDirectoryHandle() {
-        const root = await this.db.tracks.get('root_handle');
-        return root?.handle || null;
-    }
 
     /**
      * Clear all tracks except directory handle

@@ -4,10 +4,10 @@
 import EventBus from '../utils/EventBus.js';
 
 class FileSystemService {
-    constructor(databaseService, metadataService) {
+    constructor(databaseService, metadataService, permissionManager) {
         this.db = databaseService;
         this.metadata = metadataService;
-        this.dirHandleRoot = null;
+        this.permissions = permissionManager;
         this.BATCH_SIZE = 500;
 
         // Memory leak fix: Store bound handler for removal
@@ -29,32 +29,26 @@ class FileSystemService {
      * Handle visibility change events
      */
     async handleVisibilityChange() {
-        if (!document.hidden && this.dirHandleRoot) {
-            const perm = await this.dirHandleRoot.queryPermission({ mode: 'read' });
-            if (perm !== 'granted') {
-                EventBus.emit('permission:needed');
+        if (!document.hidden) {
+            const handle = await this.permissions.getHandle();
+            if (!handle) return;
+
+            const status = await this.permissions.checkPermission();
+            if (status !== 'granted') {
+                const granted = await this.permissions.requestPermissionAuto();
+                if (!granted && this.permissions.shouldShowBanner()) {
+                    EventBus.emit('permission:needed');
+                }
             }
         }
     }
 
     /**
-     * Initialize the service by restoring saved directory handle
+     * Initialize the service
      */
     async init() {
-        try {
-            const handle = await this.db.getDirectoryHandle();
-            if (handle) {
-                this.dirHandleRoot = handle;
-                // Check permissions
-                const perm = await handle.queryPermission({ mode: 'read' });
-                if (perm !== 'granted') {
-                    EventBus.emit('permission:needed');
-                }
-            }
-            console.log('[FileSystemService] Initialized');
-        } catch (error) {
-            console.error('[FileSystemService] Init error:', error);
-        }
+        console.log('[FileSystemService] Initialized');
+        // All permission logic moved to PermissionManagerService
     }
 
     /**
@@ -65,23 +59,13 @@ class FileSystemService {
             throw new Error('File System Access API not supported');
         }
 
-        this.dirHandleRoot = await window.showDirectoryPicker({
+        const handle = await window.showDirectoryPicker({
             id: 'music_root',
             mode: 'read'
         });
 
-        // Save handle to database
-        await this.db.saveDirectoryHandle(this.dirHandleRoot);
-        return this.dirHandleRoot;
-    }
-
-    /**
-     * Request permission for saved directory handle
-     */
-    async requestPermission() {
-        if (!this.dirHandleRoot) return false;
-        const permission = await this.dirHandleRoot.requestPermission({ mode: 'read' });
-        return permission === 'granted';
+        await this.permissions.saveHandle(handle);
+        return handle;
     }
 
     /**
@@ -89,17 +73,19 @@ class FileSystemService {
      * @returns {Promise<boolean>} True if granted, false otherwise
      */
     async ensurePermission() {
-        if (!this.dirHandleRoot) return false;
+        const handle = await this.permissions.getHandle();
+        if (!handle) return false;
 
-        const perm = await this.dirHandleRoot.queryPermission({ mode: 'read' });
-        if (perm === 'granted') return true;
+        const status = await this.permissions.checkPermission();
+        if (status === 'granted') return true;
 
-        // Emit event to notify UI
+        // Try silent auto-request first
+        const autoGranted = await this.permissions.requestPermissionAuto();
+        if (autoGranted) return true;
+
+        // If auto-request fails, emit event (with throttling in main.js)
         EventBus.emit('permission:needed');
-
-        // Try to request permission
-        const newPerm = await this.dirHandleRoot.requestPermission({ mode: 'read' });
-        return newPerm === 'granted';
+        return false;
     }
 
     /**
@@ -107,7 +93,8 @@ class FileSystemService {
      * @param {function} onProgress - Progress callback (count, currentFile)
      */
     async scanDirectory(onProgress) {
-        if (!this.dirHandleRoot) {
+        const handle = await this.permissions.getHandle();
+        if (!handle) {
             throw new Error('No directory handle available');
         }
 
@@ -282,7 +269,7 @@ class FileSystemService {
         };
 
         EventBus.emit('scan:started');
-        await traverse(this.dirHandleRoot, "");
+        await traverse(handle, "");
 
         // Flush any remaining albums
         for (const albumKey in albumBuffer) {
@@ -301,8 +288,8 @@ class FileSystemService {
     /**
      * Get directory handle
      */
-    getDirectoryHandle() {
-        return this.dirHandleRoot;
+    async getDirectoryHandle() {
+        return await this.permissions.getHandle();
     }
 
     /**

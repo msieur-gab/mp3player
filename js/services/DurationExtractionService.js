@@ -5,9 +5,10 @@
 import EventBus from '../utils/EventBus.js';
 
 class DurationExtractionService {
-    constructor(databaseService, metadataService) {
+    constructor(databaseService, metadataService, permissionManager) {
         this.db = databaseService;
         this.metadata = metadataService;
+        this.permissions = permissionManager;
 
         this.isExtracting = false;
         this.isPaused = false;
@@ -144,8 +145,8 @@ class DurationExtractionService {
             // Path format: /Album/Track.mp3
             const pathParts = path.split('/').filter(p => p);
 
-            // Get root directory handle from indexedDB
-            const rootHandle = await this.db.getDirectoryHandle();
+            // Get root directory handle from PermissionManager
+            const rootHandle = await this.permissions.getHandle();
             if (!rootHandle) {
                 console.warn('[DurationExtractor] No root directory handle');
                 return null;

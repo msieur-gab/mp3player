@@ -1,4 +1,4 @@
-const CACHE_NAME = 'music-pwa-v17';
+const CACHE_NAME = 'music-pwa-v18';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './js/main.js',
   './js/utils/EventBus.js',
   './js/services/DatabaseService.js',
+  './js/services/PermissionManagerService.js',
   './js/services/FileSystemService.js',
   './js/services/MetadataService.js',
   './js/services/PlaybackService.js',
