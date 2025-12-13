@@ -329,10 +329,7 @@ button:active { transform: scale(0.95); }
     margin-bottom: 0.25rem;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    line-height: 1.3;
+    white-space: nowrap;
 }
 
 .album-artist {
