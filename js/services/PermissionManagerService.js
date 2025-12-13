@@ -40,17 +40,11 @@ class PermissionManagerService {
                 const status = await this.checkPermission();
                 console.log(`[PermissionManager] Permission status: ${status}`);
 
-                // Attempt auto-request if permission not granted
+                // Show banner immediately if permission not granted
+                // (auto-request removed - requires user gesture to work)
                 if (status !== 'granted') {
-                    console.log('[PermissionManager] Attempting auto-request...');
-                    const granted = await this.requestPermissionAuto();
-                    if (granted) {
-                        console.log('[PermissionManager] Auto-request succeeded');
-                    } else {
-                        console.log('[PermissionManager] Auto-request failed or denied');
-                        // Emit event to show banner (with throttling handled in main.js)
-                        EventBus.emit('permission:needed');
-                    }
+                    console.log('[PermissionManager] Permission not granted, showing banner');
+                    EventBus.emit('permission:needed');
                 }
             } else {
                 console.log('[PermissionManager] No handle found in storage');

@@ -35,10 +35,8 @@ class FileSystemService {
 
             const status = await this.permissions.checkPermission();
             if (status !== 'granted') {
-                const granted = await this.permissions.requestPermissionAuto();
-                if (!granted && this.permissions.shouldShowBanner()) {
-                    EventBus.emit('permission:needed');
-                }
+                console.log('[FileSystemService] Permission lost, showing banner');
+                EventBus.emit('permission:needed');
             }
         }
     }
@@ -79,11 +77,8 @@ class FileSystemService {
         const status = await this.permissions.checkPermission();
         if (status === 'granted') return true;
 
-        // Try silent auto-request first
-        const autoGranted = await this.permissions.requestPermissionAuto();
-        if (autoGranted) return true;
-
-        // If auto-request fails, emit event (with throttling in main.js)
+        // Permission not granted - show banner immediately
+        console.log('[FileSystemService] Permission needed, showing banner');
         EventBus.emit('permission:needed');
         return false;
     }
