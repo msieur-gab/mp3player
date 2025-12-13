@@ -176,6 +176,10 @@ class TrackList extends HTMLElement {
                 <canvas id="visualizer-canvas"></canvas>
                 <div class="pattern-switcher">
                     <button class="pattern-btn active" data-pattern="needles">NEEDLES</button>
+                    <button class="pattern-btn" data-pattern="digital">DIGITAL</button>
+                    <button class="pattern-btn" data-pattern="vibe">VIBE</button>
+                    <button class="pattern-btn" data-pattern="arcs">ARCS</button>
+                    <button class="pattern-btn" data-pattern="rays">RAYS</button>
                     <button class="pattern-btn" data-pattern="breath">BREATH</button>
                     <button class="pattern-btn" data-pattern="horizon">HORIZON</button>
                     <button class="pattern-btn" data-pattern="grid">LINES</button>
@@ -183,6 +187,20 @@ class TrackList extends HTMLElement {
                     <button class="pattern-btn" data-pattern="flow">FLOW</button>
                     <button class="pattern-btn" data-pattern="shift">SHIFT</button>
                     <button class="pattern-btn" data-pattern="flux">FLUX</button>
+                    <button class="pattern-btn" data-pattern="pulse">PULSE</button>
+                    <button class="pattern-btn" data-pattern="rain">RAIN</button>
+                    <button class="pattern-btn" data-pattern="contour">CONTOUR</button>
+                    <button class="pattern-btn" data-pattern="weave">WEAVE</button>
+                    <button class="pattern-btn" data-pattern="strings">STRINGS</button>
+                    <button class="pattern-btn" data-pattern="strata">STRATA</button>
+                    <button class="pattern-btn" data-pattern="code">CODE</button>
+                    <button class="pattern-btn" data-pattern="cascade">CASCADE</button>
+                    <button class="pattern-btn" data-pattern="scan">SCAN</button>
+                    <button class="pattern-btn" data-pattern="ribbonOrbit">RIBBON ORBIT</button>
+                    <button class="pattern-btn" data-pattern="latticeDrift">LATTICE DRIFT</button>
+                    <button class="pattern-btn" data-pattern="echoStrands">ECHO STRANDS</button>
+                    <button class="pattern-btn" data-pattern="interferenceField">INTERFERENCE</button>
+                    <button class="pattern-btn" data-pattern="pulseScan">PULSE SCAN</button>
                 </div>
             </div>
             <div class="album-header-info">
