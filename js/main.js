@@ -35,6 +35,7 @@ class MusicPlayerApp {
         this.currentView = 'ALBUMS';
         this.activeAlbumName = null;
         this.viewList = [];
+        this.isFirstScan = false; // Track if this is initial scan or rescan
 
         // Components
         this.components = {};
@@ -127,10 +128,13 @@ class MusicPlayerApp {
         // Library events
         this.eventUnsubscribers.push(
             EventBus.on('scan:albumFound', async (albumData) => {
-                // Progressive update: reload library as albums are found
-                await this.loadLibrary();
+                // Progressive update only during first scan to avoid showing duplicates during rescan
+                if (this.isFirstScan) {
+                    await this.loadLibrary();
+                }
             }),
             EventBus.on('scan:completed', async () => {
+                this.isFirstScan = false; // Reset after scan completes
                 await this.loadLibrary();
             })
         );
@@ -267,6 +271,9 @@ class MusicPlayerApp {
         }
 
         try {
+            // Check if this is first scan (empty library)
+            this.isFirstScan = this.allTracks.length === 0;
+
             await this.fs.requestDirectoryAccess();
             await this.fs.scanDirectory((count, currentFile) => {
                 EventBus.emit('scan:progress', { count, currentFile });
