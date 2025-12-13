@@ -135,11 +135,13 @@ class MusicPlayerApp {
             EventBus.on('scan:albumFound', async (albumData) => {
                 // Progressive update only during first scan to avoid showing duplicates during rescan
                 if (this.isFirstScan) {
-                    await this.loadLibrary();
+                    // Update UI but don't start duration extraction during scan
+                    await this.loadLibrary({ skipDurationExtraction: true });
                 }
             }),
             EventBus.on('scan:completed', async () => {
                 this.isFirstScan = false; // Reset after scan completes
+                // Now start duration extraction after scan is complete
                 await this.loadLibrary();
             })
         );
@@ -294,8 +296,10 @@ class MusicPlayerApp {
 
     /**
      * Load music library
+     * @param {Object} options - Optional parameters
+     * @param {boolean} options.skipDurationExtraction - Skip starting duration extraction (for progressive scan updates)
      */
-    async loadLibrary() {
+    async loadLibrary(options = {}) {
         try {
             this.allTracks = await this.db.getAllTracks();
             const emptyState = document.getElementById('empty-state');
@@ -309,10 +313,13 @@ class MusicPlayerApp {
                 this.metadata.extractAlbumCovers(this.albums);
 
                 // Start background duration extraction for tracks missing duration
-                const tracksNeedingDuration = this.allTracks.filter(t => !t.duration);
-                if (tracksNeedingDuration.length > 0) {
-                    console.log(`[App] Extracting durations for ${tracksNeedingDuration.length} tracks`);
-                    this.extractMissingDurations(tracksNeedingDuration);
+                // Skip during progressive scan updates to avoid repeatedly cancelling/restarting
+                if (!options.skipDurationExtraction) {
+                    const tracksNeedingDuration = this.allTracks.filter(t => !t.duration);
+                    if (tracksNeedingDuration.length > 0) {
+                        console.log(`[App] Extracting durations for ${tracksNeedingDuration.length} tracks`);
+                        this.extractMissingDurations(tracksNeedingDuration);
+                    }
                 }
             } else {
                 emptyState.classList.remove('hidden');
